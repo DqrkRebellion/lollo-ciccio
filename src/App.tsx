@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { Toaster } from 'sonner';
+import { toast, Toaster } from 'sonner';
 import { supabase, TEAM_ACCOUNTS } from './lib/supabase';
 import {
   getBiometricCapability,
@@ -13,6 +13,7 @@ import {
 } from './lib/biometrics';
 import { useTheme } from './hooks/useTheme';
 import { useAppData } from './hooks/useAppData';
+import { useStaffData } from './hooks/useStaffData';
 import { LockScreen } from './components/LockScreen';
 import { BiometricSetupModal } from './components/BiometricSetupModal';
 import { AppShell, type NavTab } from './components/AppShell';
@@ -20,6 +21,9 @@ import { EventWorkspace } from './components/EventWorkspace';
 import { NewEventModal } from './components/NewEventModal';
 import { SpotlightSearch } from './components/SpotlightSearch';
 
+const StaffWorkspace = lazy(() =>
+  import('./components/StaffWorkspace').then((m) => ({ default: m.StaffWorkspace }))
+);
 const DashboardView = lazy(() =>
   import('./components/DashboardView').then((m) => ({ default: m.DashboardView }))
 );
@@ -67,8 +71,26 @@ export default function App() {
     };
   }, []);
 
+  const currentAccount = useMemo(() => {
+    const email = session?.user?.email || '';
+    const matched = TEAM_ACCOUNTS.find((a) => a.email === email);
+    if (matched) return matched;
+    return {
+      promoterId: 'lollo',
+      email,
+      displayName: String(session?.user?.user_metadata?.display_name || 'Lollo'),
+      fullName: String(session?.user?.user_metadata?.full_name || 'Lorenzo Biondi'),
+      initials: 'LC',
+      color: '#0071E3',
+    };
+  }, [session]);
+
+  const ownerPromoterId: 'lollo' | 'ciccio' =
+    currentAccount.promoterId === 'ciccio' ? 'ciccio' : 'lollo';
+
   const isUnlocked = Boolean(session) && visitUnlocked;
   const data = useAppData(isUnlocked);
+  const staffData = useStaffData(isUnlocked, ownerPromoterId, data.pushUndo);
 
   // Auto-select latest event when events load
   useEffect(() => {
@@ -118,23 +140,17 @@ export default function App() {
     return count;
   }, [data.events, data.summaries]);
 
-  const currentAccount = useMemo(() => {
-    const email = session?.user?.email || '';
-    const matched = TEAM_ACCOUNTS.find((a) => a.email === email);
-    if (matched) return matched;
-    return {
-      promoterId: 'lollo',
-      email,
-      displayName: String(session?.user?.user_metadata?.display_name || 'Lollo'),
-      fullName: String(session?.user?.user_metadata?.full_name || 'Lorenzo Biondi'),
-      initials: 'LC',
-      color: '#0071E3',
-    };
-  }, [session]);
+  const openStaffMancantiCount = useMemo(() => {
+    let count = 0;
+    for (const s of staffData.summariesByEvent.values()) {
+      if (s.totalMancanti > 0.01) count += 1;
+    }
+    return count;
+  }, [staffData.summariesByEvent]);
 
   const handleOpenEventFromAnywhere = (eventId: string) => {
     setSelectedEventId(eventId);
-    setActiveTab('events');
+    setActiveTab((cur) => (cur === 'staff' ? 'staff' : 'events'));
   };
 
   if (!authReady) {
@@ -185,10 +201,12 @@ export default function App() {
           activeTab={activeTab}
           onSelectTab={setActiveTab}
           teamName={data.settings.team_name}
+          staffName={staffData.group.name}
           userDisplayName={currentAccount.displayName}
           userColor={currentAccount.color}
           syncState={data.syncState}
           openMancantiCount={openMancantiCount}
+          openStaffMancantiCount={openStaffMancantiCount}
           canUndo={data.canUndo}
           undoCount={data.undoCount}
           lastUndoLabel={data.lastUndoLabel}
@@ -255,6 +273,41 @@ export default function App() {
                   </div>
                 }
               >
+                {activeTab === 'staff' && (
+                  <StaffWorkspace
+                    events={data.events}
+                    mainSummaries={data.summaries}
+                    ownerPromoterId={ownerPromoterId}
+                    staffData={staffData}
+                    venues={data.venues}
+                    quickTablePrices={data.settings.quick_table_prices}
+                    selectedEventId={selectedEventId}
+                    onSelectEvent={setSelectedEventId}
+                    canUndo={data.canUndo}
+                    canRedo={data.canRedo}
+                    lastUndoLabel={data.lastUndoLabel}
+                    lastRedoLabel={data.lastRedoLabel}
+                    onUndo={data.undo}
+                    onRedo={data.redo}
+                    onOpenNewEvent={() => setNewEventOpen(true)}
+                    onSyncPresalesToMain={async (eventId, quantity, revenue, oneToOne) => {
+                      await data.upsertPresalesBatch(
+                        eventId,
+                        [
+                          {
+                            promoterId: ownerPromoterId,
+                            patch: { quantity, revenue, one_to_one: oneToOne },
+                          },
+                        ],
+                        `Sincronizza preve ${staffData.group.name} su Serata`
+                      );
+                      toast.success(
+                        `Prevendite di ${currentAccount.displayName} aggiornate sulla serata (${quantity} px)`
+                      );
+                    }}
+                  />
+                )}
+
                 {activeTab === 'dashboard' && (
                   <DashboardView
                     events={data.events}

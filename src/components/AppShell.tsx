@@ -8,20 +8,23 @@ import {
   Settings,
   Sun,
   Undo2,
+  Users,
   Wallet,
 } from 'lucide-react';
 import type { SyncState } from '../hooks/useAppData';
 
-export type NavTab = 'events' | 'dashboard' | 'ledger' | 'settings';
+export type NavTab = 'events' | 'staff' | 'dashboard' | 'ledger' | 'settings';
 
 export function AppShell({
   activeTab,
   onSelectTab,
   teamName,
+  staffName,
   userDisplayName,
   userColor,
   syncState,
   openMancantiCount,
+  openStaffMancantiCount,
   canUndo,
   undoCount,
   lastUndoLabel,
@@ -35,10 +38,12 @@ export function AppShell({
   activeTab: NavTab;
   onSelectTab: (tab: NavTab) => void;
   teamName: string;
+  staffName: string;
   userDisplayName: string;
   userColor: string;
   syncState: SyncState;
   openMancantiCount: number;
+  openStaffMancantiCount: number;
   canUndo: boolean;
   undoCount: number;
   lastUndoLabel: string | null;
@@ -57,7 +62,14 @@ export function AppShell({
     badge?: number;
   }[] = [
     { id: 'events', label: 'Serate', shortLabel: 'Serate', icon: CalendarRange },
-    { id: 'dashboard', label: 'Dashboard', shortLabel: 'Statistiche', icon: BarChart3 },
+    {
+      id: 'staff',
+      label: staffName,
+      shortLabel: staffName,
+      icon: Users,
+      badge: openStaffMancantiCount > 0 ? openStaffMancantiCount : undefined,
+    },
+    { id: 'dashboard', label: 'Dashboard', shortLabel: 'Stats', icon: BarChart3 },
     {
       id: 'ledger',
       label: 'Saldi & Buste',
@@ -65,7 +77,7 @@ export function AppShell({
       icon: Wallet,
       badge: openMancantiCount > 0 ? openMancantiCount : undefined,
     },
-    { id: 'settings', label: 'Impostazioni', shortLabel: 'Impost.', icon: Settings },
+    { id: 'settings', label: 'Impostazioni', shortLabel: 'Altro', icon: Settings },
   ];
 
   const syncLabel =
@@ -341,7 +353,7 @@ export function AppShell({
           paddingBottom: 'env(safe-area-inset-bottom)',
         }}
       >
-        <div className="grid grid-cols-4 h-[58px]">
+        <div className="grid grid-cols-5 h-[58px]">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = activeTab === item.id;

@@ -1107,6 +1107,7 @@ export function useAppData(isAuthenticated: boolean) {
     undoCount: undoStack.length,
     lastUndoLabel: undoStack[undoStack.length - 1]?.label ?? null,
     lastRedoLabel: redoStack[redoStack.length - 1]?.label ?? null,
+    pushUndo,
     undo,
     redo,
     // CRUD
