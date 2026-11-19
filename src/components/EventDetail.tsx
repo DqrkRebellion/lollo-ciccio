@@ -1806,7 +1806,7 @@ export function EventDetail({
                           type="button"
                           onClick={() => onDeleteTable(event.id, t.id)}
                           aria-label={`Rimuovi tavolo ${t.table_name}`}
-                          className="p-1.5 rounded-[8px] opacity-40 group-hover:opacity-100 hover:bg-[var(--status-red-bg)] transition-all cursor-pointer"
+                          className="p-1.5 rounded-[8px] opacity-40 group-hover:opacity-100 hover:bg-[var(--status-red-bg)] transition-opacity cursor-pointer"
                           style={{ color: 'var(--status-red)' }}
                         >
                           <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1976,7 +1976,7 @@ export function EventDetail({
                             onUpdateTable(event.id, t.id, { table_name: v || 'Tavolo' });
                           }
                         }}
-                        className="font-semibold text-[16px] bg-transparent outline-none min-w-0 flex-1 truncate"
+                        className="font-semibold text-[16px] bg-transparent rounded-[6px] px-1 -mx-1 min-w-0 flex-1 truncate"
                       />
                     </div>
                     <div className="flex items-center gap-1 shrink-0">

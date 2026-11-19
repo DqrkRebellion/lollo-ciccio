@@ -1067,11 +1067,11 @@ export function DashboardView({
                   style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
                 >
                   <div
-                    className="h-full transition-all duration-300"
+                    className="h-full transition-[width] duration-300"
                     style={{ width: `${row.pct * 100}%`, backgroundColor: '#0071E3' }}
                   />
                   <div
-                    className="h-full transition-all duration-300"
+                    className="h-full transition-[width] duration-300"
                     style={{ width: `${(1 - row.pct) * 100}%`, backgroundColor: '#5856D6' }}
                   />
                 </div>
