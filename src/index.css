@@ -1,0 +1,237 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg-canvas: #f5f5f7;
+  --bg-surface: #ffffff;
+  --bg-surface-secondary: #efeff4;
+  --bg-surface-tertiary: #e5e5ea;
+  --bg-sidebar: rgba(245, 245, 247, 0.78);
+  --bg-chrome: rgba(255, 255, 255, 0.76);
+  --bg-chrome-elevated: rgba(255, 255, 255, 0.88);
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --bg-active: rgba(0, 113, 227, 0.1);
+
+  --ink-primary: #1d1d1f;
+  --ink-secondary: #6e6e73;
+  --ink-tertiary: #86868b;
+
+  --separator: rgba(0, 0, 0, 0.08);
+  --separator-strong: rgba(0, 0, 0, 0.14);
+
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --accent-subtle: rgba(0, 113, 227, 0.12);
+
+  --status-green: #248a3d;
+  --status-green-bg: rgba(40, 205, 65, 0.14);
+  --status-red: #d70015;
+  --status-red-bg: rgba(255, 59, 48, 0.13);
+  --status-orange: #c96a00;
+  --status-orange-bg: rgba(255, 149, 0, 0.14);
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  --shadow-floating: 0 12px 40px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+  --shadow-popover: 0 8px 28px rgba(0, 0, 0, 0.11), 0 0 0 0.5px rgba(0, 0, 0, 0.07);
+}
+
+.dark {
+  --bg-canvas: #000000;
+  --bg-surface: #1c1c1e;
+  --bg-surface-secondary: #2c2c2e;
+  --bg-surface-tertiary: #3a3a3c;
+  --bg-sidebar: rgba(22, 22, 24, 0.78);
+  --bg-chrome: rgba(28, 28, 30, 0.78);
+  --bg-chrome-elevated: rgba(36, 36, 38, 0.9);
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-active: rgba(10, 132, 255, 0.18);
+
+  --ink-primary: #f5f5f7;
+  --ink-secondary: #98989d;
+  --ink-tertiary: #6e6e73;
+
+  --separator: rgba(255, 255, 255, 0.1);
+  --separator-strong: rgba(255, 255, 255, 0.16);
+
+  --accent: #0a84ff;
+  --accent-hover: #409cff;
+  --accent-subtle: rgba(10, 132, 255, 0.2);
+
+  --status-green: #30d158;
+  --status-green-bg: rgba(48, 209, 88, 0.16);
+  --status-red: #ff453a;
+  --status-red-bg: rgba(255, 69, 58, 0.16);
+  --status-orange: #ff9f0a;
+  --status-orange-bg: rgba(255, 159, 10, 0.18);
+
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.36), 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+  --shadow-floating: 0 20px 56px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+  --shadow-popover: 0 12px 36px rgba(0, 0, 0, 0.55), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+}
+
+@layer base {
+  html {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    background-color: var(--bg-canvas);
+    color: var(--ink-primary);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  @media (pointer: fine) {
+    html {
+      overscroll-behavior: none;
+    }
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background-color: var(--bg-canvas);
+    color: var(--ink-primary);
+    overflow-x: hidden;
+  }
+
+  /* Optical typography sizing */
+  h1 {
+    letter-spacing: -0.028em;
+    line-height: 1.12;
+    text-wrap: balance;
+    font-optical-sizing: auto;
+  }
+
+  h2 {
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    text-wrap: balance;
+    font-optical-sizing: auto;
+  }
+
+  h3 {
+    letter-spacing: -0.012em;
+    line-height: 1.25;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+
+  /* Accessible focus ring (only on keyboard navigation) */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+/* Apple design utilities */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.apple-surface {
+  background-color: var(--bg-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.apple-chrome {
+  background-color: var(--bg-chrome);
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+}
+
+.apple-sidebar {
+  background-color: var(--bg-sidebar);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+}
+
+.apple-press {
+  transition: transform 100ms ease-out, background-color 140ms ease, opacity 140ms ease;
+}
+
+.apple-press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Inset hairline list dividers */
+.apple-list > * + * {
+  border-top: 0.5px solid var(--separator);
+}
+
+/* Clean custom inputs for numeric sheet cells */
+.apple-input {
+  background-color: var(--bg-surface-secondary);
+  color: var(--ink-primary);
+  border: 1px solid transparent;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.apple-input:focus {
+  background-color: var(--bg-surface);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+  outline: none;
+}
+
+/* Hide number input spinners for cleaner tabular-nums UX */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* Custom subtle scrollbars on desktop */
+@media (pointer: fine) {
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(128, 128, 128, 0.28);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(128, 128, 128, 0.45);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+}
+
+/* Reduced transparency & reduced motion (Apple HIG §14) */
+@media (prefers-reduced-transparency: reduce) {
+  .apple-chrome,
+  .apple-sidebar {
+    background-color: var(--bg-surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

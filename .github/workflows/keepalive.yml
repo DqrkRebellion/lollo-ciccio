@@ -1,0 +1,17 @@
+name: Supabase Free-Tier Keep-Alive
+
+on:
+  schedule:
+    - cron: '0 10 */3 * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping harmless keepalive RPC
+        run: |
+          curl --fail -sS -X POST "https://inltzlcgccfnblfepnkw.supabase.co/rest/v1/rpc/keepalive_ping" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlubHR6bGNnY2NmbmJsZmVwbmt3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUwOTU0NTUsImV4cCI6MjExMDY3MTQ1NX0.e9HPwrgvjBg7kNMSmLWESQJ0aX2-m0dSOD2gITW3C1M" \
+            -H "Content-Type: application/json" \
+            -d '{}'

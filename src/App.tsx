@@ -1,0 +1,268 @@
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
+import { Toaster } from 'sonner';
+import { supabase, TEAM_ACCOUNTS } from './lib/supabase';
+import { useTheme } from './hooks/useTheme';
+import { useAppData } from './hooks/useAppData';
+import { LockScreen } from './components/LockScreen';
+import { AppShell, type NavTab } from './components/AppShell';
+import { EventWorkspace } from './components/EventWorkspace';
+import { NewEventModal } from './components/NewEventModal';
+import { SpotlightSearch } from './components/SpotlightSearch';
+
+const DashboardView = lazy(() =>
+  import('./components/DashboardView').then((m) => ({ default: m.DashboardView }))
+);
+const LedgerView = lazy(() =>
+  import('./components/LedgerView').then((m) => ({ default: m.LedgerView }))
+);
+const SettingsView = lazy(() =>
+  import('./components/SettingsView').then((m) => ({ default: m.SettingsView }))
+);
+
+export default function App() {
+  const { preference, setPreference, isDark } = useTheme();
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+
+  const [activeTab, setActiveTab] = useState<NavTab>('events');
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [newEventOpen, setNewEventOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // Auth listener
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSession(data.session ?? null);
+      setAuthReady(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession ?? null);
+    });
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  const data = useAppData(Boolean(session));
+
+  // Auto-select latest event when events load
+  useEffect(() => {
+    if (!selectedEventId && data.events.length > 0) {
+      setSelectedEventId(data.events[0].id);
+    }
+  }, [data.events, selectedEventId]);
+
+  // Global Apple keyboard shortcuts (⌘K search, ⌘N new event)
+  useEffect(() => {
+    if (!session) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchOpen((o) => !o);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [session]);
+
+  const openMancantiCount = useMemo(() => {
+    let count = 0;
+    for (const ev of data.events) {
+      if (ev.era !== '2PX') continue;
+      const s = data.summaries.get(ev.id);
+      if (s && s.mancantiTotal > 0.01) count += 1;
+    }
+    return count;
+  }, [data.events, data.summaries]);
+
+  const currentAccount = useMemo(() => {
+    const email = session?.user?.email || '';
+    const matched = TEAM_ACCOUNTS.find((a) => a.email === email);
+    if (matched) return matched;
+    return {
+      promoterId: 'lollo',
+      email,
+      displayName: String(session?.user?.user_metadata?.display_name || 'Lollo'),
+      fullName: String(session?.user?.user_metadata?.full_name || 'Lorenzo Biondi'),
+      initials: 'LC',
+      color: '#0071E3',
+    };
+  }, [session]);
+
+  const handleOpenEventFromAnywhere = (eventId: string) => {
+    setSelectedEventId(eventId);
+    setActiveTab('events');
+  };
+
+  if (!authReady) {
+    return (
+      <div
+        className="min-h-dvh flex items-center justify-center"
+        style={{ backgroundColor: 'var(--bg-canvas)' }}
+      >
+        <div
+          className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"
+          style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <Toaster
+        position="bottom-right"
+        theme={isDark ? 'dark' : 'light'}
+        toastOptions={{
+          style: {
+            borderRadius: '14px',
+            fontFamily: 'inherit',
+          },
+        }}
+      />
+
+      {!session ? (
+        <LockScreen
+          onAuthenticated={() => {
+            supabase.auth.getSession().then(({ data: d }) => setSession(d.session ?? null));
+          }}
+        />
+      ) : (
+        <AppShell
+          activeTab={activeTab}
+          onSelectTab={setActiveTab}
+          teamName={data.settings.team_name}
+          userDisplayName={currentAccount.displayName}
+          userColor={currentAccount.color}
+          syncState={data.syncState}
+          openMancantiCount={openMancantiCount}
+          isDark={isDark}
+          onToggleTheme={() => setPreference(isDark ? 'light' : 'dark')}
+          onOpenSearch={() => setSearchOpen(true)}
+          onOpenNewEvent={() => setNewEventOpen(true)}
+        >
+          {data.loading && data.events.length === 0 ? (
+            <div className="min-h-[70vh] flex flex-col items-center justify-center gap-3">
+              <div
+                className="h-7 w-7 animate-spin rounded-full border-2 border-t-transparent"
+                style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }}
+              />
+              <span className="text-[14px]" style={{ color: 'var(--ink-secondary)' }}>
+                Caricamento serate dal cloud…
+              </span>
+            </div>
+          ) : (
+            <>
+              {activeTab === 'events' && (
+                <EventWorkspace
+                  events={data.events}
+                  summaries={data.summaries}
+                  selectedEventId={selectedEventId}
+                  onSelectEvent={setSelectedEventId}
+                  settings={data.settings}
+                  promoters={data.promoters}
+                  venues={data.venues}
+                  onOpenNewEvent={() => setNewEventOpen(true)}
+                  onUpdateEvent={data.updateEvent}
+                  onDuplicateEvent={async (ev) => {
+                    const created = await data.duplicateEvent(ev);
+                    if (created) setSelectedEventId(created.id);
+                  }}
+                  onDeleteEvent={async (id) => {
+                    await data.deleteEvent(id);
+                    if (selectedEventId === id) setSelectedEventId(null);
+                  }}
+                  onUpsertPresale={data.upsertPresale}
+                  onUpsertReconciliation={data.upsertReconciliation}
+                  onAddTable={data.addTable}
+                  onUpdateTable={data.updateTable}
+                  onDeleteTable={data.deleteTable}
+                />
+              )}
+
+              <Suspense
+                fallback={
+                  <div className="min-h-[60vh] flex items-center justify-center">
+                    <div
+                      className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"
+                      style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }}
+                    />
+                  </div>
+                }
+              >
+                {activeTab === 'dashboard' && (
+                  <DashboardView
+                    events={data.events}
+                    summaries={data.summaries}
+                    promoters={data.promoters}
+                    venues={data.venues}
+                    onOpenEvent={handleOpenEventFromAnywhere}
+                  />
+                )}
+
+                {activeTab === 'ledger' && (
+                  <LedgerView
+                    events={data.events}
+                    summaries={data.summaries}
+                    promoters={data.promoters}
+                    onOpenEvent={handleOpenEventFromAnywhere}
+                    onUpdateEvent={data.updateEvent}
+                    onUpsertReconciliation={data.upsertReconciliation}
+                  />
+                )}
+
+                {activeTab === 'settings' && (
+                  <SettingsView
+                    settings={data.settings}
+                    promoters={data.promoters}
+                    venues={data.venues}
+                    events={data.events}
+                    summaries={data.summaries}
+                    themePreference={preference}
+                    onChangeTheme={setPreference}
+                    syncState={data.syncState}
+                    userEmail={currentAccount.email}
+                    userDisplayName={currentAccount.displayName}
+                    onUpdateSettings={data.updateSettings}
+                    onUpsertVenue={data.upsertVenue}
+                    onUpsertPromoter={data.upsertPromoter}
+                    onSignOut={async () => {
+                      await supabase.auth.signOut();
+                      setSession(null);
+                    }}
+                  />
+                )}
+              </Suspense>
+            </>
+          )}
+
+          <NewEventModal
+            open={newEventOpen}
+            onClose={() => setNewEventOpen(false)}
+            venues={data.venues}
+            defaultListaCost={data.settings.default_lista_cost}
+            onSubmit={async (input) => {
+              const created = await data.createEvent(input);
+              if (created) {
+                setSelectedEventId(created.id);
+                setActiveTab('events');
+              }
+            }}
+          />
+
+          <SpotlightSearch
+            open={searchOpen}
+            onClose={() => setSearchOpen(false)}
+            events={data.events}
+            summaries={data.summaries}
+            onSelectEvent={handleOpenEventFromAnywhere}
+          />
+        </AppShell>
+      )}
+    </>
+  );
+}
