@@ -895,7 +895,7 @@ export function StaffEventDetail({
 
           {/* Desktop Table */}
           <div className="hidden md:block apple-surface rounded-[16px] overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[780px]">
+            <table className="w-full text-left border-collapse min-w-[840px]">
               <thead>
                 <tr
                   className="text-[12px] font-medium"
@@ -904,13 +904,13 @@ export function StaffEventDetail({
                     borderBottom: '0.5px solid var(--separator)',
                   }}
                 >
-                  <th className="py-3 pl-4 pr-2 font-medium min-w-[160px]">Promoter</th>
-                  <th className="py-3 px-1.5 text-right font-medium w-[76px]">N. preve</th>
-                  <th className="py-3 px-1.5 text-right font-medium w-[86px]">€ preve</th>
-                  <th className="py-3 px-1.5 text-right font-medium w-[86px]">Scarico</th>
-                  <th className="py-3 px-1.5 text-right font-medium w-[80px]">Note €</th>
-                  <th className="py-3 px-1.5 text-right font-medium w-[118px]">Dati €</th>
-                  <th className="py-3 px-2 text-right font-medium w-[92px]">Manc.</th>
+                  <th className="py-3 pl-4 pr-2 font-medium min-w-[155px]">Promoter</th>
+                  <th className="py-3 px-1.5 text-right font-medium w-[78px]">N. preve</th>
+                  <th className="py-3 px-1.5 text-right font-medium w-[98px]">€ preve</th>
+                  <th className="py-3 px-1.5 text-right font-medium w-[98px]">Scarico</th>
+                  <th className="py-3 px-1.5 text-right font-medium w-[86px]">Note €</th>
+                  <th className="py-3 px-1.5 text-right font-medium w-[128px]">Dati €</th>
+                  <th className="py-3 px-2 text-right font-medium w-[94px]">Manc.</th>
                   <th className="py-3 px-2 text-right font-medium w-[92px]">Busta</th>
                   <th className="py-3 px-2 text-center font-medium w-[68px]">Pagata</th>
                   <th className="py-3 pr-3 w-[34px]" />

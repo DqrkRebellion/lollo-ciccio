@@ -744,13 +744,13 @@ export function StaffWorkspace({
                 )}
               </div>
 
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {(
                   [
                     { id: 'ALL', label: 'Tutte' },
-                    { id: 'WITH_DATA', label: 'Con dati staff' },
+                    { id: 'WITH_DATA', label: 'Con dati' },
                     { id: 'OPEN_MANCANTI', label: 'Mancanti' },
-                    { id: 'UNPAID_BUSTA', label: 'Buste da pagare' },
+                    { id: 'UNPAID_BUSTA', label: 'Buste' },
                   ] as const
                 ).map((f) => {
                   const active = listFilter === f.id;
