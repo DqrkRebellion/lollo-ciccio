@@ -2,9 +2,19 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { Toaster } from 'sonner';
 import { supabase, TEAM_ACCOUNTS } from './lib/supabase';
+import {
+  getBiometricCapability,
+  getLocalCredentialId,
+  isBiometricPromptDismissed,
+  isLockOnOpenEnabled,
+  isSessionUnlockedThisVisit,
+  markSessionUnlockedThisVisit,
+  type BiometricCapability,
+} from './lib/biometrics';
 import { useTheme } from './hooks/useTheme';
 import { useAppData } from './hooks/useAppData';
 import { LockScreen } from './components/LockScreen';
+import { BiometricSetupModal } from './components/BiometricSetupModal';
 import { AppShell, type NavTab } from './components/AppShell';
 import { EventWorkspace } from './components/EventWorkspace';
 import { NewEventModal } from './components/NewEventModal';
@@ -24,11 +34,21 @@ export default function App() {
   const { preference, setPreference, isDark } = useTheme();
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [visitUnlocked, setVisitUnlocked] = useState<boolean>(() => {
+    if (!isLockOnOpenEnabled()) return true;
+    return isSessionUnlockedThisVisit();
+  });
+  const [bioCap, setBioCap] = useState<BiometricCapability | null>(null);
+  const [showBioPrompt, setShowBioPrompt] = useState(false);
 
   const [activeTab, setActiveTab] = useState<NavTab>('events');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [newEventOpen, setNewEventOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+
+  useEffect(() => {
+    getBiometricCapability().then(setBioCap);
+  }, []);
 
   // Auth listener
   useEffect(() => {
@@ -47,7 +67,8 @@ export default function App() {
     };
   }, []);
 
-  const data = useAppData(Boolean(session));
+  const isUnlocked = Boolean(session) && visitUnlocked;
+  const data = useAppData(isUnlocked);
 
   // Auto-select latest event when events load
   useEffect(() => {
@@ -143,10 +164,20 @@ export default function App() {
         }}
       />
 
-      {!session ? (
+      {!isUnlocked ? (
         <LockScreen
-          onAuthenticated={() => {
+          onAuthenticated={(method, promoterId) => {
+            setVisitUnlocked(true);
             supabase.auth.getSession().then(({ data: d }) => setSession(d.session ?? null));
+            // Offer 1-tap Face ID / Android Biometrics activation right after first PIN unlock
+            if (
+              method === 'pin' &&
+              bioCap?.supported &&
+              !getLocalCredentialId(promoterId) &&
+              !isBiometricPromptDismissed(promoterId)
+            ) {
+              window.setTimeout(() => setShowBioPrompt(true), 450);
+            }
           }}
         />
       ) : (
@@ -257,10 +288,17 @@ export default function App() {
                     syncState={data.syncState}
                     userEmail={currentAccount.email}
                     userDisplayName={currentAccount.displayName}
+                    userPromoterId={currentAccount.promoterId}
                     onUpdateSettings={data.updateSettings}
                     onUpsertVenue={data.upsertVenue}
                     onUpsertPromoter={data.upsertPromoter}
+                    onLockNow={() => {
+                      markSessionUnlockedThisVisit(false);
+                      setVisitUnlocked(false);
+                    }}
                     onSignOut={async () => {
+                      markSessionUnlockedThisVisit(false);
+                      setVisitUnlocked(false);
                       await supabase.auth.signOut();
                       setSession(null);
                     }}
@@ -268,6 +306,17 @@ export default function App() {
                 )}
               </Suspense>
             </>
+          )}
+
+          {bioCap?.supported && (
+            <BiometricSetupModal
+              open={showBioPrompt}
+              onClose={() => setShowBioPrompt(false)}
+              promoterId={currentAccount.promoterId}
+              displayName={currentAccount.displayName}
+              capability={bioCap}
+              onEnrolled={() => setShowBioPrompt(false)}
+            />
           )}
 
           <NewEventModal

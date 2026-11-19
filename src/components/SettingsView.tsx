@@ -1,13 +1,17 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Building2,
   Calculator,
   Database,
   Download,
+  Fingerprint,
   KeyRound,
+  Lock,
   LogOut,
   Palette,
   Plus,
+  ScanFace,
+  Smartphone,
   Trash2,
   Users,
 } from 'lucide-react';
@@ -19,7 +23,18 @@ import {
   SegmentedControl,
 } from './ui/AppleControls';
 import { supabase } from '../lib/supabase';
-import { exportEventsToCsv, formatEur } from '../lib/format';
+import {
+  deletePasskey,
+  enrollDeviceBiometrics,
+  getBiometricCapability,
+  getLocalCredentialId,
+  isLockOnOpenEnabled,
+  listOwnPasskeys,
+  setLockOnOpenEnabled,
+  type BiometricCapability,
+  type StoredPasskey,
+} from '../lib/biometrics';
+import { exportEventsToCsv, formatDateShort, formatEur } from '../lib/format';
 import type {
   AppSettings,
   BonusSplitMode,
@@ -61,9 +76,11 @@ export function SettingsView({
   syncState,
   userEmail,
   userDisplayName,
+  userPromoterId,
   onUpdateSettings,
   onUpsertVenue,
   onUpsertPromoter,
+  onLockNow,
   onSignOut,
 }: {
   settings: AppSettings;
@@ -76,9 +93,11 @@ export function SettingsView({
   syncState: SyncState;
   userEmail: string;
   userDisplayName: string;
+  userPromoterId: string;
   onUpdateSettings: (patch: Partial<AppSettings>) => Promise<void>;
   onUpsertVenue: (venue: Partial<Venue> & { name: string }) => Promise<void>;
   onUpsertPromoter: (promoter: Promoter) => Promise<void>;
+  onLockNow: () => void;
   onSignOut: () => Promise<void>;
 }) {
   const [section, setSection] = useState<SettingsSection>('rules');
@@ -119,6 +138,46 @@ export function SettingsView({
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [pinSaving, setPinSaving] = useState(false);
+
+  // Biometrics / Face ID state
+  const [bioCap, setBioCap] = useState<BiometricCapability | null>(null);
+  const [passkeys, setPasskeys] = useState<StoredPasskey[]>([]);
+  const [bioEnrolling, setBioEnrolling] = useState(false);
+  const [lockOnOpen, setLockOnOpen] = useState(() => isLockOnOpenEnabled());
+  const localCredId = getLocalCredentialId(userPromoterId);
+
+  useEffect(() => {
+    getBiometricCapability().then(setBioCap);
+    listOwnPasskeys().then(setPasskeys);
+  }, []);
+
+  const handleEnrollBio = async () => {
+    setBioEnrolling(true);
+    try {
+      await enrollDeviceBiometrics(userPromoterId);
+      setLockOnOpen(true);
+      const updated = await listOwnPasskeys();
+      setPasskeys(updated);
+      toast.success(`${bioCap?.label || 'Biometria'} attivato su questo dispositivo`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Attivazione non completata';
+      if (!msg.toLowerCase().includes('annullat') && !msg.toLowerCase().includes('abort')) {
+        toast.error(msg);
+      }
+    } finally {
+      setBioEnrolling(false);
+    }
+  };
+
+  const handleRemovePasskey = async (pk: StoredPasskey) => {
+    try {
+      await deletePasskey(pk.id, pk.credential_id, userPromoterId);
+      setPasskeys((prev) => prev.filter((x) => x.id !== pk.id));
+      toast.success(`Dispositivo “${pk.device_name}” rimosso`);
+    } catch {
+      toast.error('Impossibile rimuovere il dispositivo');
+    }
+  };
 
   const navItems: { id: SettingsSection; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: 'rules', label: 'Buste & Regole', icon: Calculator },
@@ -752,9 +811,11 @@ export function SettingsView({
             <>
               <div className="apple-surface rounded-[16px] overflow-hidden">
                 <div className="apple-list">
-                  <div className="flex items-center justify-between gap-4 px-5 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
                     <div>
-                      <div className="text-[14px] font-semibold">Profilo connesso: {userDisplayName}</div>
+                      <div className="text-[14px] font-semibold">
+                        Profilo connesso: {userDisplayName}
+                      </div>
                       <div className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
                         {userEmail} · Cloud{' '}
                         <span
@@ -773,19 +834,158 @@ export function SettingsView({
                         </span>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={onSignOut}
-                      className="inline-flex items-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[13px] font-semibold apple-press cursor-pointer"
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={onLockNow}
+                        className="inline-flex items-center gap-1.5 rounded-[10px] px-3 py-2 text-[13px] font-semibold apple-press cursor-pointer"
+                        style={{
+                          backgroundColor: 'var(--bg-surface-secondary)',
+                          color: 'var(--ink-primary)',
+                        }}
+                      >
+                        <Lock className="h-3.5 w-3.5" aria-hidden="true" />
+                        Blocca ora
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onSignOut}
+                        className="inline-flex items-center gap-1.5 rounded-[10px] px-3 py-2 text-[13px] font-semibold apple-press cursor-pointer"
+                        style={{
+                          backgroundColor: 'var(--status-red-bg)',
+                          color: 'var(--status-red)',
+                        }}
+                      >
+                        <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+                        Esci
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Face ID / Touch ID / Android Biometrics Card */}
+              <div className="apple-surface rounded-[16px] overflow-hidden">
+                <div
+                  className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"
+                  style={{ borderBottom: '0.5px solid var(--separator)' }}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px]"
                       style={{
-                        backgroundColor: 'var(--status-red-bg)',
-                        color: 'var(--status-red)',
+                        backgroundColor: 'var(--accent-subtle)',
+                        color: 'var(--accent)',
                       }}
                     >
-                      <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
-                      Blocca / Esci
-                    </button>
+                      {bioCap?.platform === 'ios' ? (
+                        <ScanFace className="h-5 w-5" aria-hidden="true" />
+                      ) : (
+                        <Fingerprint className="h-5 w-5" aria-hidden="true" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <h2 className="text-[15px] font-semibold">
+                        {bioCap?.label || 'Face ID & Biometria'}
+                      </h2>
+                      <p className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
+                        {bioCap?.supported
+                          ? localCredId
+                            ? `Attivo su questo ${bioCap.deviceName}`
+                            : `Disponibile su questo ${bioCap.deviceName} (Apple & Android)`
+                          : 'Non rilevato su questo browser'}
+                      </p>
+                    </div>
                   </div>
+
+                  {bioCap?.supported && (
+                    <button
+                      type="button"
+                      disabled={bioEnrolling}
+                      onClick={handleEnrollBio}
+                      className="inline-flex items-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[13px] font-semibold text-white apple-press cursor-pointer disabled:opacity-50"
+                      style={{ backgroundColor: 'var(--accent)' }}
+                    >
+                      {bioEnrolling
+                        ? 'Verifica…'
+                        : localCredId
+                          ? 'Aggiungi dispositivo'
+                          : `Attiva ${bioCap.label}`}
+                    </button>
+                  )}
+                </div>
+
+                <div className="apple-list">
+                  <div className="flex items-center justify-between gap-4 px-5 py-3.5">
+                    <div>
+                      <div className="text-[14px] font-medium">
+                        Richiedi {bioCap?.label || 'Face ID'} / PIN all’apertura
+                      </div>
+                      <div className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
+                        Quando riapri il sito mostra subito lo sblocco biometrico automatico
+                      </div>
+                    </div>
+                    <AppleSwitch
+                      checked={lockOnOpen}
+                      label="Richiedi sblocco all'apertura"
+                      onChange={(checked) => {
+                        setLockOnOpen(checked);
+                        setLockOnOpenEnabled(checked);
+                        toast.success(
+                          checked
+                            ? 'Sblocco automatico all’apertura attivato'
+                            : 'Blocco all’apertura disattivato'
+                        );
+                      }}
+                    />
+                  </div>
+
+                  {passkeys.length > 0 &&
+                    passkeys.map((pk) => {
+                      const isThisDevice = pk.credential_id === localCredId;
+                      return (
+                        <div
+                          key={pk.id}
+                          className="flex items-center justify-between gap-3 px-5 py-3"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Smartphone
+                              className="h-4 w-4 shrink-0"
+                              style={{ color: 'var(--ink-secondary)' }}
+                              aria-hidden="true"
+                            />
+                            <div className="min-w-0">
+                              <div className="text-[13px] font-semibold truncate">
+                                {pk.device_name}
+                                {isThisDevice && (
+                                  <span
+                                    className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                                    style={{
+                                      backgroundColor: 'var(--status-green-bg)',
+                                      color: 'var(--status-green)',
+                                    }}
+                                  >
+                                    Questo dispositivo
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px]" style={{ color: 'var(--ink-tertiary)' }}>
+                                Registrato il {formatDateShort(pk.created_at.slice(0, 10))}
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePasskey(pk)}
+                            aria-label={`Rimuovi ${pk.device_name}`}
+                            className="p-1.5 rounded-[8px] hover:bg-[var(--status-red-bg)] cursor-pointer"
+                            style={{ color: 'var(--status-red)' }}
+                          >
+                            <Trash2 className="h-4 w-4" aria-hidden="true" />
+                          </button>
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
 
