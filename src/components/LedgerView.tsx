@@ -11,19 +11,25 @@ export function LedgerView({
   promoters,
   onOpenEvent,
   onUpdateEvent,
-  onUpsertReconciliation,
+  onUpsertReconciliationsBatch,
 }: {
   events: FullEvent[];
   summaries: Map<string, EventSummary>;
   promoters: Promoter[];
   onOpenEvent: (eventId: string) => void;
   onUpdateEvent: (id: string, patch: Partial<EventRecord>) => Promise<void>;
-  onUpsertReconciliation: (
+  onUpsertReconciliationsBatch: (
     eventId: string,
-    promoterId: string,
-    patch: Partial<
-      Pick<EventPrReconciliation, 'lista_pr_count' | 'note_amount' | 'note_text' | 'scaricato_amount'>
-    >
+    patches: {
+      promoterId: string;
+      patch: Partial<
+        Pick<
+          EventPrReconciliation,
+          'lista_pr_count' | 'note_amount' | 'note_text' | 'scaricato_amount'
+        >
+      >;
+    }[],
+    label?: string
   ) => Promise<void>;
 }) {
   const [tab, setTab] = useState<'MANCANTI' | 'BUSTE_APERTE' | 'BUSTE_SALDATE'>('MANCANTI');
@@ -88,14 +94,22 @@ export function LedgerView({
   const handleSettleEventCash = async (ev: FullEvent) => {
     const s = summaries.get(ev.id);
     if (!s) return;
-    await Promise.all(
-      s.promoterOrder.map((pid) => {
+    const patches = s.promoterOrder
+      .filter((pid) => Math.abs(s.byPromoter[pid]?.mancanti ?? 0) >= 0.01)
+      .map((pid) => {
         const pr = s.byPromoter[pid];
-        if (!pr || Math.abs(pr.mancanti) < 0.01) return Promise.resolve();
-        const target = Math.max(0, Math.round((pr.scaricoTotal + pr.noteAmount) * 100) / 100);
-        return onUpsertReconciliation(ev.id, pid, { scaricato_amount: target });
-      })
-    );
+        return {
+          promoterId: pid,
+          patch: {
+            scaricato_amount: Math.max(
+              0,
+              Math.round((pr.scaricoTotal + pr.noteAmount) * 100) / 100
+            ),
+          },
+        };
+      });
+    if (patches.length === 0) return;
+    await onUpsertReconciliationsBatch(ev.id, patches, `Salda “${ev.title}”`);
     toast.success(`Scarico “${ev.title}” saldato`);
   };
 

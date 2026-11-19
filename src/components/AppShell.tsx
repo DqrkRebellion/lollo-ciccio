@@ -7,6 +7,7 @@ import {
   Search,
   Settings,
   Sun,
+  Undo2,
   Wallet,
 } from 'lucide-react';
 import type { SyncState } from '../hooks/useAppData';
@@ -21,6 +22,10 @@ export function AppShell({
   userColor,
   syncState,
   openMancantiCount,
+  canUndo,
+  undoCount,
+  lastUndoLabel,
+  onUndo,
   isDark,
   onToggleTheme,
   onOpenSearch,
@@ -34,6 +39,10 @@ export function AppShell({
   userColor: string;
   syncState: SyncState;
   openMancantiCount: number;
+  canUndo: boolean;
+  undoCount: number;
+  lastUndoLabel: string | null;
+  onUndo: () => Promise<void>;
   isDark: boolean;
   onToggleTheme: () => void;
   onOpenSearch: () => void;
@@ -170,16 +179,37 @@ export function AppShell({
             })}
           </nav>
 
-          {/* New Event Action */}
-          <button
-            type="button"
-            onClick={onOpenNewEvent}
-            className="w-full flex items-center justify-center gap-1.5 rounded-[11px] py-2.5 px-3 text-[13px] font-semibold text-white apple-press cursor-pointer"
-            style={{ backgroundColor: 'var(--accent)' }}
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Nuova serata
-          </button>
+          {/* New Event Action + Quick Global Undo */}
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={onOpenNewEvent}
+              className="w-full flex items-center justify-center gap-1.5 rounded-[11px] py-2.5 px-3 text-[13px] font-semibold text-white apple-press cursor-pointer"
+              style={{ backgroundColor: 'var(--accent)' }}
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Nuova serata
+            </button>
+
+            {canUndo && (
+              <button
+                type="button"
+                onClick={() => onUndo()}
+                title={lastUndoLabel ? `Annulla: ${lastUndoLabel}` : 'Annulla ultima modifica'}
+                className="w-full flex items-center justify-between gap-2 rounded-[10px] py-2 px-3 text-[12px] font-semibold apple-press cursor-pointer"
+                style={{
+                  backgroundColor: 'var(--accent-subtle)',
+                  color: 'var(--accent)',
+                }}
+              >
+                <span className="inline-flex items-center gap-1.5 truncate">
+                  <Undo2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span className="truncate">Annulla ({undoCount})</span>
+                </span>
+                <kbd className="text-[10px] opacity-75">⌘Z</kbd>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Sidebar Footer: Active PR + Theme Quick Toggle */}
@@ -248,6 +278,21 @@ export function AppShell({
         </div>
 
         <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            disabled={!canUndo}
+            onClick={() => onUndo()}
+            aria-label={lastUndoLabel ? `Annulla: ${lastUndoLabel}` : 'Annulla ultima modifica'}
+            title={lastUndoLabel ? `Annulla: ${lastUndoLabel}` : 'Annulla'}
+            className="relative flex h-8 items-center justify-center gap-1 rounded-full px-2.5 text-[12px] font-semibold apple-press cursor-pointer disabled:opacity-30"
+            style={{
+              backgroundColor: canUndo ? 'var(--accent-subtle)' : 'var(--bg-surface-secondary)',
+              color: canUndo ? 'var(--accent)' : 'var(--ink-secondary)',
+            }}
+          >
+            <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />
+            {canUndo && <span className="tabular-nums">{undoCount}</span>}
+          </button>
           <button
             type="button"
             onClick={onOpenSearch}

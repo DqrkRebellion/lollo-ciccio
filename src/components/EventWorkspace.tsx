@@ -22,12 +22,20 @@ export function EventWorkspace({
   settings,
   promoters,
   venues,
+  canUndo,
+  canRedo,
+  lastUndoLabel,
+  lastRedoLabel,
+  onUndo,
+  onRedo,
   onOpenNewEvent,
   onUpdateEvent,
   onDuplicateEvent,
   onDeleteEvent,
   onUpsertPresale,
+  onUpsertPresalesBatch,
   onUpsertReconciliation,
+  onUpsertReconciliationsBatch,
   onAddTable,
   onUpdateTable,
   onDeleteTable,
@@ -39,6 +47,12 @@ export function EventWorkspace({
   settings: AppSettings;
   promoters: Promoter[];
   venues: Venue[];
+  canUndo: boolean;
+  canRedo: boolean;
+  lastUndoLabel: string | null;
+  lastRedoLabel: string | null;
+  onUndo: () => Promise<void>;
+  onRedo: () => Promise<void>;
   onOpenNewEvent: () => void;
   onUpdateEvent: (id: string, patch: Partial<EventRecord>) => Promise<void>;
   onDuplicateEvent: (ev: FullEvent) => Promise<void>;
@@ -48,12 +62,33 @@ export function EventWorkspace({
     promoterId: string,
     patch: Partial<Pick<EventPresale, 'quantity' | 'revenue' | 'one_to_one'>>
   ) => Promise<void>;
+  onUpsertPresalesBatch: (
+    eventId: string,
+    patches: {
+      promoterId: string;
+      patch: Partial<Pick<EventPresale, 'quantity' | 'revenue' | 'one_to_one'>>;
+    }[],
+    label?: string
+  ) => Promise<void>;
   onUpsertReconciliation: (
     eventId: string,
     promoterId: string,
     patch: Partial<
       Pick<EventPrReconciliation, 'lista_pr_count' | 'note_amount' | 'note_text' | 'scaricato_amount'>
     >
+  ) => Promise<void>;
+  onUpsertReconciliationsBatch: (
+    eventId: string,
+    patches: {
+      promoterId: string;
+      patch: Partial<
+        Pick<
+          EventPrReconciliation,
+          'lista_pr_count' | 'note_amount' | 'note_text' | 'scaricato_amount'
+        >
+      >;
+    }[],
+    label?: string
   ) => Promise<void>;
   onAddTable: (
     eventId: string,
@@ -165,7 +200,7 @@ export function EventWorkspace({
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Cerca serata, locale o tavolo…"
               aria-label="Filtra serate"
-              className="apple-input w-full rounded-[10px] pl-9 pr-8 py-2 text-[14px]"
+              className="apple-input w-full rounded-[10px] pl-9 pr-8 py-2 text-[16px] md:text-[14px]"
             />
             {search && (
               <button
@@ -362,12 +397,20 @@ export function EventWorkspace({
             settings={settings}
             promoters={promoters}
             venues={venues}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            lastUndoLabel={lastUndoLabel}
+            lastRedoLabel={lastRedoLabel}
+            onUndo={onUndo}
+            onRedo={onRedo}
             onBackMobile={() => setMobileDetailOpen(false)}
             onUpdateEvent={onUpdateEvent}
             onDuplicateEvent={onDuplicateEvent}
             onDeleteEvent={onDeleteEvent}
             onUpsertPresale={onUpsertPresale}
+            onUpsertPresalesBatch={onUpsertPresalesBatch}
             onUpsertReconciliation={onUpsertReconciliation}
+            onUpsertReconciliationsBatch={onUpsertReconciliationsBatch}
             onAddTable={onAddTable}
             onUpdateTable={onUpdateTable}
             onDeleteTable={onDeleteTable}

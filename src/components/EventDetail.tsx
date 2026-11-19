@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Check,
@@ -9,14 +9,17 @@ import {
   FileSpreadsheet,
   Info,
   Plus,
+  Redo2,
   Share2,
   SlidersHorizontal,
   Trash2,
+  Undo2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   APPLE_SPRING_SNAPPY,
   AppleModal,
+  AppleStepper,
   AppleSwitch,
   MancantiBadge,
   NumericCellInput,
@@ -47,6 +50,7 @@ import type {
 } from '../types';
 
 const SCARICO_CYCLE: ScaricoStatus[] = ['DA SCARICARE', 'DA NON SCARICARE', '-'];
+const QUICK_PAYERS = [5, 8, 10, 12, 15, 20];
 
 function nextScarico(cur: ScaricoStatus): ScaricoStatus {
   const i = SCARICO_CYCLE.indexOf(cur);
@@ -76,7 +80,7 @@ function ScaricoPill({
       type="button"
       onClick={onClick}
       title="Clicca per cambiare stato scarico"
-      className="rounded-full px-2.5 py-1 text-[11px] font-semibold apple-press cursor-pointer whitespace-nowrap transition-colors"
+      className="rounded-full px-2.5 py-1 text-[12px] md:text-[11px] font-semibold apple-press cursor-pointer whitespace-nowrap transition-colors"
       style={{ backgroundColor: styles.bg, color: styles.fg }}
     >
       {styles.label}
@@ -90,12 +94,20 @@ export function EventDetail({
   settings,
   promoters,
   venues,
+  canUndo,
+  canRedo,
+  lastUndoLabel,
+  lastRedoLabel,
+  onUndo,
+  onRedo,
   onBackMobile,
   onUpdateEvent,
   onDuplicateEvent,
   onDeleteEvent,
   onUpsertPresale,
+  onUpsertPresalesBatch,
   onUpsertReconciliation,
+  onUpsertReconciliationsBatch,
   onAddTable,
   onUpdateTable,
   onDeleteTable,
@@ -105,6 +117,12 @@ export function EventDetail({
   settings: AppSettings;
   promoters: Promoter[];
   venues: Venue[];
+  canUndo: boolean;
+  canRedo: boolean;
+  lastUndoLabel: string | null;
+  lastRedoLabel: string | null;
+  onUndo: () => Promise<void>;
+  onRedo: () => Promise<void>;
   onBackMobile?: () => void;
   onUpdateEvent: (id: string, patch: Partial<EventRecord>) => Promise<void>;
   onDuplicateEvent: (ev: FullEvent) => Promise<void>;
@@ -114,12 +132,33 @@ export function EventDetail({
     promoterId: string,
     patch: Partial<Pick<EventPresale, 'quantity' | 'revenue' | 'one_to_one'>>
   ) => Promise<void>;
+  onUpsertPresalesBatch: (
+    eventId: string,
+    patches: {
+      promoterId: string;
+      patch: Partial<Pick<EventPresale, 'quantity' | 'revenue' | 'one_to_one'>>;
+    }[],
+    label?: string
+  ) => Promise<void>;
   onUpsertReconciliation: (
     eventId: string,
     promoterId: string,
     patch: Partial<
       Pick<EventPrReconciliation, 'lista_pr_count' | 'note_amount' | 'note_text' | 'scaricato_amount'>
     >
+  ) => Promise<void>;
+  onUpsertReconciliationsBatch: (
+    eventId: string,
+    patches: {
+      promoterId: string;
+      patch: Partial<
+        Pick<
+          EventPrReconciliation,
+          'lista_pr_count' | 'note_amount' | 'note_text' | 'scaricato_amount'
+        >
+      >;
+    }[],
+    label?: string
   ) => Promise<void>;
   onAddTable: (
     eventId: string,
@@ -137,13 +176,21 @@ export function EventDetail({
   const [showEditMeta, setShowEditMeta] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showAddTableModal, setShowAddTableModal] = useState(false);
+  const [showModalExtras, setShowModalExtras] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [expandedMobilePrs, setExpandedMobilePrs] = useState<Record<string, boolean>>({});
+  const [expandedMobileTables, setExpandedMobileTables] = useState<Record<string, boolean>>({});
+  const [showMobileExtraCash, setShowMobileExtraCash] = useState(
+    () => event.lista_cost > 0 || event.general_note_amount !== 0
+  );
 
   // Import prevendite state
   const [importText, setImportText] = useState('');
 
-  // Quick-add table form state (used both inline desktop and sheet mobile)
-  const defaultVenueObj = venues.find((v) => v.id === event.venue_id || v.name === event.venue_name);
+  // Quick-add table form state
+  const defaultVenueObj = venues.find(
+    (v) => v.id === event.venue_id || v.name === event.venue_name
+  );
   const defaultPrice = defaultVenueObj?.default_table_price || settings.quick_table_prices[1] || 30;
   const activePrs = useMemo(
     () => promoters.filter((p) => summary.promoterOrder.includes(p.id)),
@@ -158,12 +205,15 @@ export function EventDetail({
   const [newTableName, setNewTableName] = useState('');
   const [newTablePayers, setNewTablePayers] = useState<number>(0);
   const [newTablePrice, setNewTablePrice] = useState<number>(defaultPrice);
+  const [newTableSurchargePayers, setNewTableSurchargePayers] = useState<number>(0);
+  const [newTableSurchargePrice, setNewTableSurchargePrice] = useState<number>(0);
   const [newTableExtraNo, setNewTableExtraNo] = useState<number>(0);
   const [newTableExtraSi, setNewTableExtraSi] = useState<number>(0);
   const [newTableScarico, setNewTableScarico] = useState<ScaricoStatus>(
     settings.default_table_scarico
   );
 
+  const modalTableNameRef = useRef<HTMLInputElement>(null);
   const rules = resolveRules(event, settings);
 
   const promoterById = useMemo(() => {
@@ -203,28 +253,45 @@ export function EventDetail({
     }
   };
 
-  const handleQuickAddTable = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!newTableName.trim() && newTablePayers === 0 && newTableExtraNo === 0 && newTableExtraSi === 0) {
+  const resetNewTableForm = () => {
+    setNewTableName('');
+    setNewTablePayers(0);
+    setNewTableSurchargePayers(0);
+    setNewTableSurchargePrice(0);
+    setNewTableExtraNo(0);
+    setNewTableExtraSi(0);
+  };
+
+  const handleQuickAddTable = async (keepOpen = false) => {
+    if (
+      !newTableName.trim() &&
+      newTablePayers === 0 &&
+      newTableExtraNo === 0 &&
+      newTableExtraSi === 0
+    ) {
+      toast.error('Inserisci almeno il nome o il numero di paganti');
       return;
     }
-    await onAddTable(event.id, {
+    const created = await onAddTable(event.id, {
       promoter_id: newTablePr,
       table_name: newTableName.trim() || 'Nuovo tavolo',
       payers_count: newTablePayers,
       price: newTablePrice,
-      surcharge_payers_count: 0,
-      surcharge_price: 0,
+      surcharge_payers_count: newTableSurchargePayers,
+      surcharge_price: newTableSurchargePrice,
       extra_no_scarico: newTableExtraNo,
       extra_si_scarico: newTableExtraSi,
       scarico_status: newTableScarico,
     });
-    setNewTableName('');
-    setNewTablePayers(0);
-    setNewTableExtraNo(0);
-    setNewTableExtraSi(0);
-    setShowAddTableModal(false);
-    toast.success('Tavolo aggiunto');
+    if (!created) return;
+    resetNewTableForm();
+    if (keepOpen) {
+      toast.success(`Tavolo “${created.table_name}” aggiunto — inserisci il prossimo`);
+      window.setTimeout(() => modalTableNameRef.current?.focus(), 60);
+    } else {
+      setShowAddTableModal(false);
+      toast.success(`Tavolo “${created.table_name}” aggiunto`);
+    }
   };
 
   const handleImportPreview = useMemo(
@@ -234,34 +301,51 @@ export function EventDetail({
 
   const handleApplyImport = async () => {
     if (handleImportPreview.length === 0) return;
-    await Promise.all(
-      handleImportPreview.map((row) =>
-        onUpsertPresale(event.id, row.promoterId, {
+    await onUpsertPresalesBatch(
+      event.id,
+      handleImportPreview.map((row) => ({
+        promoterId: row.promoterId,
+        patch: {
           quantity: row.quantity,
           revenue: row.revenue,
           one_to_one: row.one_to_one,
-        })
-      )
+        },
+      })),
+      'Import report prevendite'
     );
     setImportText('');
     setShowImportModal(false);
     toast.success('Report prevendite importato');
   };
 
-  // Presales input mode: "Totale − Lollo = Ciccio" mirrors the original Google Sheet
-  const primaryPrId = summary.promoterOrder[0] || 'lollo';
-  const secondaryPrId = summary.promoterOrder[1] || 'ciccio';
+  // --- Prevendite: Smart "Totale − Lollo → Ciccio" ---
+  const primaryPrId = summary.promoterOrder.includes('lollo')
+    ? 'lollo'
+    : summary.promoterOrder[0] || 'lollo';
+  const secondaryPrId =
+    summary.promoterOrder.find((id) => id !== primaryPrId) || 'ciccio';
   const isTotalMinusMode =
     event.presale_input_mode === 'total_minus_primary' && summary.promoterOrder.length === 2;
+
+  const primaryPresale = event.presales.find((p) => p.promoter_id === primaryPrId);
 
   const handleTotalPresaleEdit = (
     field: 'quantity' | 'revenue' | 'one_to_one',
     newTotal: number
   ) => {
-    const primaryRow = event.presales.find((p) => p.promoter_id === primaryPrId);
-    const primaryVal = primaryRow ? Number(primaryRow[field]) || 0 : 0;
-    const secondaryNext = Math.max(0, Math.round((newTotal - primaryVal) * 100) / 100);
-    onUpsertPresale(event.id, secondaryPrId, { [field]: secondaryNext });
+    const primaryVal = primaryPresale ? Number(primaryPresale[field]) || 0 : 0;
+    if (newTotal < primaryVal) {
+      toast.error(
+        `Il totale (${newTotal}) è inferiore al dato di ${getPromoter(primaryPrId).display_name} (${primaryVal})`
+      );
+      return;
+    }
+    const secondaryNext = Math.round((newTotal - primaryVal) * 100) / 100;
+    onUpsertPresalesBatch(
+      event.id,
+      [{ promoterId: secondaryPrId, patch: { [field]: secondaryNext } }],
+      'Aggiornamento totale prevendite'
+    );
   };
 
   const handlePrimaryPresaleEditInTotalMode = (
@@ -274,9 +358,18 @@ export function EventDetail({
         : field === 'revenue'
           ? summary.revenuePresales
           : summary.oneToOnePresales;
-    const secondaryNext = Math.max(0, Math.round((currentTotal - newPrimaryVal) * 100) / 100);
-    onUpsertPresale(event.id, primaryPrId, { [field]: newPrimaryVal });
-    onUpsertPresale(event.id, secondaryPrId, { [field]: secondaryNext });
+    const secondaryNext = Math.max(
+      0,
+      Math.round((currentTotal - newPrimaryVal) * 100) / 100
+    );
+    onUpsertPresalesBatch(
+      event.id,
+      [
+        { promoterId: primaryPrId, patch: { [field]: newPrimaryVal } },
+        { promoterId: secondaryPrId, patch: { [field]: secondaryNext } },
+      ],
+      `Prevendite ${getPromoter(primaryPrId).display_name} (Ciccio auto)`
+    );
   };
 
   const cycleTablePromoter = (t: EventTable) => {
@@ -289,28 +382,42 @@ export function EventDetail({
   const handleSettlePr = (promoterId: string) => {
     const pr = summary.byPromoter[promoterId];
     if (!pr) return;
-    const targetScaricato = Math.max(0, Math.round((pr.scaricoTotal + pr.noteAmount) * 100) / 100);
-    onUpsertReconciliation(event.id, promoterId, { scaricato_amount: targetScaricato });
+    const targetScaricato = Math.max(
+      0,
+      Math.round((pr.scaricoTotal + pr.noteAmount) * 100) / 100
+    );
+    onUpsertReconciliationsBatch(
+      event.id,
+      [{ promoterId, patch: { scaricato_amount: targetScaricato } }],
+      `Salda scarico ${getPromoter(promoterId).display_name}`
+    );
     toast.success(`Scarico ${getPromoter(promoterId).display_name} saldato`);
   };
 
   const handleSettleAll = () => {
-    for (const pid of summary.promoterOrder) {
-      const pr = summary.byPromoter[pid];
-      if (!pr || Math.abs(pr.mancanti) < 0.01) continue;
-      const targetScaricato = Math.max(
-        0,
-        Math.round((pr.scaricoTotal + pr.noteAmount) * 100) / 100
-      );
-      onUpsertReconciliation(event.id, pid, { scaricato_amount: targetScaricato });
-    }
+    const patches = summary.promoterOrder
+      .filter((pid) => Math.abs(summary.byPromoter[pid]?.mancanti ?? 0) >= 0.01)
+      .map((pid) => {
+        const pr = summary.byPromoter[pid];
+        return {
+          promoterId: pid,
+          patch: {
+            scaricato_amount: Math.max(
+              0,
+              Math.round((pr.scaricoTotal + pr.noteAmount) * 100) / 100
+            ),
+          },
+        };
+      });
+    if (patches.length === 0) return;
+    onUpsertReconciliationsBatch(event.id, patches, 'Salda tutto serata');
     toast.success('Scarichi serata saldati');
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1040px] px-4 sm:px-6 lg:px-8 pt-4 pb-28 lg:pb-12">
+    <div className="mx-auto w-full max-w-[1040px] px-4 sm:px-6 lg:px-8 pt-3 sm:pt-4 pb-36 lg:pb-12">
       {/* Top Action Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div className="flex flex-wrap items-center justify-between gap-2.5 mb-4">
         <div className="flex items-center gap-2 min-w-0">
           {onBackMobile && (
             <button
@@ -345,25 +452,58 @@ export function EventDetail({
                 color: 'var(--ink-secondary)',
               }}
             >
-              Storico 3 PR
+              3 PR
             </span>
           )}
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* Dedicated Undo / Redo Pill */}
+          <div
+            className="inline-flex items-center rounded-[10px] p-0.5 apple-surface"
+            role="group"
+            aria-label="Cronologia modifiche"
+          >
+            <button
+              type="button"
+              disabled={!canUndo}
+              onClick={() => onUndo()}
+              title={lastUndoLabel ? `Annulla: ${lastUndoLabel} (Ctrl+Z)` : 'Niente da annullare'}
+              className="inline-flex items-center gap-1 rounded-[8px] px-2.5 py-1 text-[12px] font-semibold apple-press cursor-pointer disabled:opacity-30"
+              style={{ color: canUndo ? 'var(--accent)' : 'var(--ink-secondary)' }}
+            >
+              <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="hidden sm:inline">Annulla</span>
+            </button>
+            <span className="h-4 w-[0.5px]" style={{ backgroundColor: 'var(--separator)' }} />
+            <button
+              type="button"
+              disabled={!canRedo}
+              onClick={() => onRedo()}
+              title={lastRedoLabel ? `Ripristina: ${lastRedoLabel}` : 'Niente da ripristinare'}
+              aria-label="Ripristina modifica"
+              className="inline-flex items-center justify-center rounded-[8px] px-2 py-1 apple-press cursor-pointer disabled:opacity-30"
+              style={{ color: canRedo ? 'var(--ink-primary)' : 'var(--ink-secondary)' }}
+            >
+              <Redo2 className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={() => setShowEditMeta(true)}
-            className="inline-flex items-center gap-1.5 rounded-[10px] px-3 py-1.5 text-[13px] font-medium apple-surface apple-press cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-[10px] px-2.5 sm:px-3 py-1.5 text-[13px] font-medium apple-surface apple-press cursor-pointer"
+            aria-label="Modifica dati serata"
           >
             <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
-            <span className="hidden sm:inline">Modifica dati</span>
+            <span className="hidden sm:inline">Modifica</span>
           </button>
           <button
             type="button"
             onClick={handleCopyWhatsApp}
-            className="inline-flex items-center gap-1.5 rounded-[10px] px-3 py-1.5 text-[13px] font-medium apple-surface apple-press cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-[10px] px-2.5 sm:px-3 py-1.5 text-[13px] font-medium apple-surface apple-press cursor-pointer"
             title="Copia riepilogo WhatsApp"
+            aria-label="Copia riepilogo WhatsApp"
           >
             <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
             <span className="hidden sm:inline">WhatsApp</span>
@@ -371,7 +511,7 @@ export function EventDetail({
           <button
             type="button"
             onClick={() => onDuplicateEvent(event)}
-            className="inline-flex items-center gap-1.5 rounded-[10px] px-2.5 py-1.5 text-[13px] font-medium apple-surface apple-press cursor-pointer"
+            className="hidden sm:inline-flex items-center gap-1.5 rounded-[10px] px-2.5 py-1.5 text-[13px] font-medium apple-surface apple-press cursor-pointer"
             aria-label="Duplica serata"
             title="Duplica struttura serata"
           >
@@ -391,32 +531,31 @@ export function EventDetail({
       </div>
 
       {/* Title + Event Mode + Busta Paid Switch */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-3.5 mb-5">
         <div className="min-w-0">
-          <h1 className="text-[26px] sm:text-[32px] font-bold tracking-tight truncate">
+          <h1 className="text-[24px] sm:text-[32px] font-bold tracking-tight truncate">
             {event.title}
           </h1>
-          <p className="mt-0.5 text-[14px]" style={{ color: 'var(--ink-secondary)' }}>
+          <p className="mt-0.5 text-[13px] sm:text-[14px]" style={{ color: 'var(--ink-secondary)' }}>
             {formatDateFull(event.event_date)}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           <SegmentedControl<EventMode>
             ariaLabel="Modalità serata"
             size="sm"
             value={event.mode}
             onChange={(m) => onUpdateEvent(event.id, { mode: m })}
+            className="w-full sm:w-auto"
             options={[
-              { value: 'NO OSPITE', label: `No ospite (${formatPercent(rules.table_rate_no_guest)})` },
-              { value: 'OSPITE', label: `Ospite (${formatPercent(rules.table_rate_guest)})` },
+              { value: 'NO OSPITE', label: `No ospite ${formatPercent(rules.table_rate_no_guest)}` },
+              { value: 'OSPITE', label: `Ospite ${formatPercent(rules.table_rate_guest)}` },
               { value: '-', label: 'Off' },
             ]}
           />
 
-          <label
-            className="inline-flex items-center gap-2.5 rounded-[12px] px-3 py-1.5 apple-surface cursor-pointer select-none"
-          >
+          <label className="w-full sm:w-auto inline-flex items-center justify-between sm:justify-start gap-2.5 rounded-[12px] px-3.5 py-2 sm:py-1.5 apple-surface cursor-pointer select-none">
             <span className="text-[13px] font-medium">Busta saldata</span>
             <AppleSwitch
               checked={event.is_busta_paid}
@@ -430,51 +569,50 @@ export function EventDetail({
         </div>
       </div>
 
-      {/* 1. Unified Financial Overview Strip (Apple Wallet / Stocks craft) */}
+      {/* 1. Unified Financial Overview Strip */}
       <section className="apple-surface rounded-[18px] overflow-hidden mb-6">
         <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 divide-x divide-[var(--separator)]">
           {/* PX Totali */}
-          <div className="p-4 sm:p-5">
+          <div className="p-3.5 sm:p-5">
             <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Ingressi totali
             </span>
-            <div className="mt-1 text-[28px] font-bold tracking-tight tabular-nums leading-none">
+            <div className="mt-1 text-[24px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none">
               {formatInt(summary.pxTotal)}
-              <span className="ml-1 text-[14px] font-medium" style={{ color: 'var(--ink-tertiary)' }}>
+              <span className="ml-1 text-[13px] font-medium" style={{ color: 'var(--ink-tertiary)' }}>
                 px
               </span>
             </div>
-            <div className="mt-2 flex items-center gap-3 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
               <span>Preve {formatInt(summary.pxPresales)}</span>
-              <span>·</span>
               <span>Tavoli {formatInt(summary.pxTables)}</span>
             </div>
           </div>
 
           {/* Fatturato Totale */}
-          <div className="p-4 sm:p-5">
+          <div className="p-3.5 sm:p-5">
             <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Fatturato totale
             </span>
-            <div className="mt-1 text-[26px] xl:text-[28px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap">
+            <div className="mt-1 text-[24px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap">
               {formatEur(summary.revenueTotal)}
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
               <span className="whitespace-nowrap">Preve {formatEur(summary.revenuePresales)}</span>
               <span className="whitespace-nowrap">Tavoli {formatEur(summary.revenueTables)}</span>
             </div>
           </div>
 
           {/* Busta Totale */}
-          <div className="p-4 sm:p-5">
-            <div className="flex items-center justify-between gap-2">
+          <div className="p-3.5 sm:p-5">
+            <div className="flex items-center justify-between gap-1.5">
               <span className="text-[12px] font-medium whitespace-nowrap" style={{ color: 'var(--ink-secondary)' }}>
                 Busta serata
               </span>
               <button
                 type="button"
                 onClick={() => setShowFormula((s) => !s)}
-                className="inline-flex items-center gap-1 text-[11px] font-medium cursor-pointer whitespace-nowrap"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold cursor-pointer whitespace-nowrap"
                 style={{ color: 'var(--accent)' }}
               >
                 <Info className="h-3 w-3" aria-hidden="true" />
@@ -482,12 +620,12 @@ export function EventDetail({
               </button>
             </div>
             <div
-              className="mt-1 text-[26px] xl:text-[28px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap"
+              className="mt-1 text-[24px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap"
               style={{ color: event.is_busta_paid ? 'var(--status-green)' : 'var(--ink-primary)' }}
             >
               {formatEur(summary.bustaTotal, true)}
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
               {summary.bonusAmount > 0 ? (
                 <span
                   className="rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap"
@@ -505,8 +643,8 @@ export function EventDetail({
           </div>
 
           {/* Scarico & Mancanti */}
-          <div className="p-4 sm:p-5">
-            <div className="flex items-center justify-between gap-2">
+          <div className="p-3.5 sm:p-5">
+            <div className="flex items-center justify-between gap-1.5">
               <span className="text-[12px] font-medium whitespace-nowrap" style={{ color: 'var(--ink-secondary)' }}>
                 Mancanti
               </span>
@@ -524,7 +662,7 @@ export function EventDetail({
             <div className="mt-1.5">
               <MancantiBadge value={summary.mancantiTotal} />
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
               <span className="whitespace-nowrap">Scarico {formatEur(summary.scaricoTotal)}</span>
               <span className="whitespace-nowrap">Versati {formatEur(summary.scaricatoTotal)}</span>
             </div>
@@ -540,9 +678,9 @@ export function EventDetail({
               backgroundColor: 'var(--bg-surface)',
             }}
           >
-            <div className="flex flex-wrap items-center justify-between gap-2 text-[12px] mb-2">
+            <div className="flex flex-wrap items-center justify-between gap-1.5 text-[12px] mb-2">
               <span className="font-medium" style={{ color: 'var(--ink-secondary)' }}>
-                Scaglioni bonus fatturato
+                Bonus fatturato
               </span>
               <span className="tabular-nums font-medium">
                 {summary.nextBonusTier ? (
@@ -551,7 +689,7 @@ export function EventDetail({
                     <strong style={{ color: 'var(--accent)' }}>
                       {formatEur(summary.amountToNextBonus)}
                     </strong>{' '}
-                    dalla soglia {formatEur(summary.nextBonusTier.threshold)} (bonus +
+                    da {formatEur(summary.nextBonusTier.threshold)} (+
                     {formatEur(summary.nextBonusTier.bonus)})
                   </>
                 ) : (
@@ -571,13 +709,15 @@ export function EventDetail({
                 transition={APPLE_SPRING_SNAPPY}
                 className="h-full rounded-full"
                 style={{
-                  backgroundColor:
-                    summary.bonusAmount > 0 ? '#34C759' : 'var(--accent)',
+                  backgroundColor: summary.bonusAmount > 0 ? '#34C759' : 'var(--accent)',
                 }}
               />
             </div>
-            <div className="mt-1.5 flex items-center justify-between text-[11px] tabular-nums" style={{ color: 'var(--ink-tertiary)' }}>
-              <span>€ 0</span>
+            <div
+              className="mt-1.5 hidden sm:flex items-center justify-between text-[11px] tabular-nums"
+              style={{ color: 'var(--ink-tertiary)' }}
+            >
+              <span>0 €</span>
               {sortedTiersAsc.map((t) => {
                 const hit = summary.revenueTotal > t.threshold;
                 return (
@@ -627,15 +767,6 @@ export function EventDetail({
                   <div>
                     <span style={{ color: 'var(--ink-secondary)' }}>Bonus scaglione: </span>
                     <strong>{formatEur(summary.bonusAmount, true)}</strong>
-                    <span className="ml-1.5 text-[12px]" style={{ color: 'var(--ink-tertiary)' }}>
-                      (ripartito{' '}
-                      {rules.bonus_split_mode === 'equal'
-                        ? '50/50'
-                        : rules.bonus_split_mode === 'px_proportional'
-                          ? 'in base ai PX'
-                          : 'in proporzione al fatturato'}
-                      )
-                    </span>
                   </div>
                 </div>
 
@@ -656,7 +787,7 @@ export function EventDetail({
                     <button
                       type="button"
                       onClick={() => onUpdateEvent(event.id, { busta_override: null })}
-                      className="text-[12px] font-medium cursor-pointer"
+                      className="text-[12px] font-semibold cursor-pointer"
                       style={{ color: 'var(--accent)' }}
                     >
                       Auto
@@ -669,12 +800,17 @@ export function EventDetail({
         </AnimatePresence>
       </section>
 
-      {/* 2. Riepilogo per PR (Mirrors G1:I8 — PX, Lista PR, Scarico, Note, Scaricato, Mancanti, Busta) */}
+      {/* 2. Riepilogo PR & Cassa — Zero-scroll cards on mobile, full table on desktop */}
       <section className="mb-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-2.5 px-1">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5 px-1">
           <h2 className="text-[18px] font-semibold">Riepilogo PR &amp; Cassa</h2>
-          <div className="flex items-center gap-3">
-            <label className="inline-flex items-center gap-2 text-[13px]" style={{ color: 'var(--ink-secondary)' }}>
+
+          {/* Desktop inline Lista / Rettifica */}
+          <div className="hidden md:flex items-center gap-3">
+            <label
+              className="inline-flex items-center gap-2 text-[13px]"
+              style={{ color: 'var(--ink-secondary)' }}
+            >
               <span>Costo lista</span>
               <NumericCellInput
                 value={event.lista_cost}
@@ -684,7 +820,10 @@ export function EventDetail({
                 className="w-20"
               />
             </label>
-            <label className="inline-flex items-center gap-2 text-[13px]" style={{ color: 'var(--ink-secondary)' }}>
+            <label
+              className="inline-flex items-center gap-2 text-[13px]"
+              style={{ color: 'var(--ink-secondary)' }}
+            >
               <span>Rettifica gen.</span>
               <NumericCellInput
                 value={event.general_note_amount}
@@ -696,9 +835,198 @@ export function EventDetail({
               />
             </label>
           </div>
+
+          {/* Mobile toggle for Costo lista & Rettifica gen. */}
+          <button
+            type="button"
+            onClick={() => setShowMobileExtraCash((v) => !v)}
+            className="md:hidden inline-flex items-center gap-1 rounded-[8px] px-2.5 py-1 text-[12px] font-medium apple-surface apple-press cursor-pointer"
+            style={{ color: 'var(--ink-secondary)' }}
+          >
+            Lista / Rettifica
+            {showMobileExtraCash ? (
+              <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+            )}
+          </button>
         </div>
 
-        <div className="apple-surface rounded-[16px] overflow-x-auto">
+        {/* Mobile Extra Cash Settings */}
+        {showMobileExtraCash && (
+          <div className="md:hidden apple-surface rounded-[14px] p-3 mb-2.5 grid grid-cols-2 gap-2.5">
+            <div>
+              <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                Costo lista (€ / px)
+              </span>
+              <NumericCellInput
+                value={event.lista_cost}
+                prefix="€"
+                onCommit={(v) => onUpdateEvent(event.id, { lista_cost: v })}
+                ariaLabel="Costo lista PR"
+              />
+            </div>
+            <div>
+              <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                Rettifica generale (€)
+              </span>
+              <NumericCellInput
+                value={event.general_note_amount}
+                allowNegative
+                prefix="€"
+                onCommit={(v) => onUpdateEvent(event.id, { general_note_amount: v })}
+                ariaLabel="Rettifica generale"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Mobile PR Cards (ZERO horizontal scroll!) */}
+        <div className="md:hidden space-y-2.5">
+          {summary.promoterOrder.map((pid) => {
+            const pr = summary.byPromoter[pid];
+            const meta = getPromoter(pid);
+            if (!pr) return null;
+            const expanded = Boolean(expandedMobilePrs[pid]);
+            return (
+              <div key={pid} className="apple-surface rounded-[16px] p-3.5 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-white"
+                      style={{ backgroundColor: meta.color }}
+                    >
+                      {meta.display_name.slice(0, 2).toUpperCase()}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-[15px] font-semibold leading-tight">
+                        {meta.display_name}
+                      </div>
+                      <div
+                        className="text-[12px] tabular-nums"
+                        style={{ color: 'var(--ink-secondary)' }}
+                      >
+                        {formatInt(pr.pxTotal)} px ({pr.pxPresales}p · {pr.pxTables}t) ·{' '}
+                        {formatEur(pr.revenueTotal)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0 tabular-nums">
+                    <div className="text-[16px] font-bold">{formatEur(pr.bustaTotal, true)}</div>
+                    <div className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+                      Busta{pr.bustaBonusShare > 0 ? ` (+${formatEur(pr.bustaBonusShare)})` : ''}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Fast Cash Row: Scarico -> Scaricato -> Mancanti */}
+                <div
+                  className="flex items-center justify-between gap-2 pt-2.5"
+                  style={{ borderTop: '0.5px solid var(--separator)' }}
+                >
+                  <div className="min-w-0">
+                    <div className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+                      Scarico: <strong className="tabular-nums">{formatEur(pr.scaricoTotal)}</strong>
+                    </div>
+                    <div className="mt-1">
+                      <MancantiBadge value={pr.mancanti} compact />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-[104px]">
+                      <NumericCellInput
+                        value={pr.scaricatoAmount}
+                        prefix="€"
+                        placeholder="Versato"
+                        onCommit={(v) =>
+                          onUpsertReconciliation(event.id, pid, { scaricato_amount: v })
+                        }
+                        ariaLabel={`Scaricato ${meta.display_name}`}
+                      />
+                    </div>
+                    {pr.mancanti > 0.01 && (
+                      <button
+                        type="button"
+                        onClick={() => handleSettlePr(pid)}
+                        className="flex h-[38px] px-2.5 shrink-0 items-center justify-center gap-1 rounded-[9px] text-[12px] font-semibold apple-press cursor-pointer"
+                        style={{
+                          backgroundColor: 'var(--status-green-bg)',
+                          color: 'var(--status-green)',
+                        }}
+                      >
+                        <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                        Salda
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Expandable Lista PR & Note € */}
+                <div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedMobilePrs((prev) => ({ ...prev, [pid]: !prev[pid] }))
+                    }
+                    className="inline-flex items-center gap-1 text-[12px] font-medium cursor-pointer"
+                    style={{ color: 'var(--ink-tertiary)' }}
+                  >
+                    {expanded ? 'Nascondi lista e note' : 'Lista PR e note'}
+                    {(pr.listaPrCount > 0 || pr.noteAmount !== 0) && !expanded && (
+                      <span style={{ color: 'var(--accent)' }}>
+                        ({pr.listaPrCount > 0 ? `${pr.listaPrCount} lista` : ''}
+                        {pr.listaPrCount > 0 && pr.noteAmount !== 0 ? ' · ' : ''}
+                        {pr.noteAmount !== 0 ? formatEur(pr.noteAmount) : ''})
+                      </span>
+                    )}
+                    {expanded ? (
+                      <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+                    ) : (
+                      <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                  </button>
+
+                  {expanded && (
+                    <div className="mt-2 grid grid-cols-2 gap-2.5">
+                      <div>
+                        <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                          Lista PR (px)
+                        </span>
+                        <NumericCellInput
+                          value={pr.listaPrCount}
+                          integer
+                          onCommit={(v) =>
+                            onUpsertReconciliation(event.id, pid, { lista_pr_count: v })
+                          }
+                          ariaLabel={`Lista PR ${meta.display_name}`}
+                        />
+                      </div>
+                      <div>
+                        <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                          Note / Rettifica (€)
+                        </span>
+                        <NumericCellInput
+                          value={pr.noteAmount}
+                          allowNegative
+                          prefix="€"
+                          onCommit={(v) =>
+                            onUpsertReconciliation(event.id, pid, { note_amount: v })
+                          }
+                          ariaLabel={`Note ${meta.display_name}`}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop PR Table */}
+        <div className="hidden md:block apple-surface rounded-[16px] overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[600px]">
             <thead>
               <tr
@@ -735,7 +1063,10 @@ export function EventDetail({
                         </span>
                         <div className="min-w-0">
                           <div className="font-semibold leading-tight">{meta.display_name}</div>
-                          <div className="text-[11px] tabular-nums" style={{ color: 'var(--ink-tertiary)' }}>
+                          <div
+                            className="text-[11px] tabular-nums"
+                            style={{ color: 'var(--ink-tertiary)' }}
+                          >
                             {formatEur(pr.revenueTotal)} fatt.
                           </div>
                         </div>
@@ -743,7 +1074,10 @@ export function EventDetail({
                     </td>
                     <td className="py-3 px-2 text-right font-semibold tabular-nums">
                       {formatInt(pr.pxTotal)}
-                      <div className="text-[11px] font-normal" style={{ color: 'var(--ink-tertiary)' }}>
+                      <div
+                        className="text-[11px] font-normal"
+                        style={{ color: 'var(--ink-tertiary)' }}
+                      >
                         {pr.pxPresales}p · {pr.pxTables}t
                       </div>
                     </td>
@@ -818,10 +1152,10 @@ export function EventDetail({
         </div>
       </section>
 
-      {/* 3. Sezione Prevendite */}
+      {/* 3. Sezione Prevendite — Smart "Totale − Lollo → Ciccio" + Zero-Scroll Mobile Cards */}
       <section className="mb-6">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5 px-1">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <h2 className="text-[18px] font-semibold">Prevendite</h2>
             {summary.promoterOrder.length === 2 && (
               <SegmentedControl<PresaleInputMode>
@@ -830,8 +1164,8 @@ export function EventDetail({
                 value={event.presale_input_mode}
                 onChange={(m) => onUpdateEvent(event.id, { presale_input_mode: m })}
                 options={[
-                  { value: 'per_pr', label: 'Per PR' },
                   { value: 'total_minus_primary', label: 'Totale − Lollo' },
+                  { value: 'per_pr', label: 'Per PR' },
                 ]}
               />
             )}
@@ -843,11 +1177,219 @@ export function EventDetail({
             style={{ color: 'var(--accent)' }}
           >
             <FileSpreadsheet className="h-3.5 w-3.5" aria-hidden="true" />
-            Importa report
+            Importa
           </button>
         </div>
 
-        <div className="apple-surface rounded-[16px] overflow-x-auto">
+        {isTotalMinusMode && (
+          <p className="text-[12px] mb-2 px-1" style={{ color: 'var(--ink-secondary)' }}>
+            Inserisci il <strong>Totale serata</strong> e i dati di{' '}
+            <strong>{getPromoter(primaryPrId).display_name}</strong>: le prevendite di{' '}
+            <strong>{getPromoter(secondaryPrId).display_name}</strong> si calcolano in automatico.
+          </p>
+        )}
+
+        {/* Mobile Prevendite Stacked Cards (ZERO horizontal scroll!) */}
+        <div className="md:hidden space-y-2.5">
+          {isTotalMinusMode && (
+            <div
+              className="apple-surface rounded-[16px] p-3.5 space-y-2.5"
+              style={{
+                borderLeft: '3px solid var(--accent)',
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[14px] font-bold">Totale serata</span>
+                {summary.revenuePresales > 0 &&
+                  summary.oneToOnePresales !== summary.revenuePresales && (
+                    <button
+                      type="button"
+                      onClick={() => handleTotalPresaleEdit('one_to_one', summary.revenuePresales)}
+                      className="rounded-full px-2 py-0.5 text-[11px] font-semibold apple-press cursor-pointer"
+                      style={{ backgroundColor: 'var(--accent-subtle)', color: 'var(--accent)' }}
+                    >
+                      1to1 = Incasso
+                    </button>
+                  )}
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                    N° Preve
+                  </span>
+                  <NumericCellInput
+                    value={summary.pxPresales}
+                    integer
+                    onCommit={(v) => handleTotalPresaleEdit('quantity', v)}
+                    ariaLabel="Totale prevendite serata"
+                  />
+                </div>
+                <div>
+                  <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                    Incasso (€)
+                  </span>
+                  <NumericCellInput
+                    value={summary.revenuePresales}
+                    onCommit={(v) => handleTotalPresaleEdit('revenue', v)}
+                    ariaLabel="Incasso totale prevendite"
+                  />
+                </div>
+                <div>
+                  <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                    1-to-1 (€)
+                  </span>
+                  <NumericCellInput
+                    value={summary.oneToOnePresales}
+                    onCommit={(v) => handleTotalPresaleEdit('one_to_one', v)}
+                    ariaLabel="Totale One to One prevendite"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {summary.promoterOrder.map((pid) => {
+            const row = event.presales.find((p) => p.promoter_id === pid);
+            const meta = getPromoter(pid);
+            const qty = row?.quantity ?? 0;
+            const rev = row?.revenue ?? 0;
+            const oto = row?.one_to_one ?? 0;
+            const isDerived = isTotalMinusMode && pid === secondaryPrId;
+
+            return (
+              <div
+                key={pid}
+                className="apple-surface rounded-[16px] p-3.5 space-y-2.5"
+                style={{
+                  opacity: isDerived ? 0.92 : 1,
+                }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: meta.color }}
+                    />
+                    <span className="text-[14px] font-semibold">{meta.display_name}</span>
+                    {isDerived && (
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                        style={{
+                          backgroundColor: 'var(--bg-surface-secondary)',
+                          color: 'var(--ink-secondary)',
+                        }}
+                      >
+                        Auto = Totale − {getPromoter(primaryPrId).display_name}
+                      </span>
+                    )}
+                  </div>
+                  {!isDerived && rev > 0 && oto !== rev && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        isTotalMinusMode && pid === primaryPrId
+                          ? handlePrimaryPresaleEditInTotalMode('one_to_one', rev)
+                          : onUpsertPresale(event.id, pid, { one_to_one: rev })
+                      }
+                      className="rounded-full px-2 py-0.5 text-[11px] font-semibold apple-press cursor-pointer"
+                      style={{ backgroundColor: 'var(--accent-subtle)', color: 'var(--accent)' }}
+                    >
+                      1to1 = Incasso
+                    </button>
+                  )}
+                </div>
+
+                {isDerived ? (
+                  <div
+                    className="grid grid-cols-3 gap-2 rounded-[10px] p-2.5 text-center tabular-nums"
+                    style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
+                  >
+                    <div>
+                      <span className="block text-[10px]" style={{ color: 'var(--ink-secondary)' }}>
+                        N° Preve
+                      </span>
+                      <span className="text-[15px] font-bold">{formatInt(qty)}</span>
+                    </div>
+                    <div>
+                      <span className="block text-[10px]" style={{ color: 'var(--ink-secondary)' }}>
+                        Incasso
+                      </span>
+                      <span className="text-[15px] font-bold">{formatEur(rev)}</span>
+                    </div>
+                    <div>
+                      <span className="block text-[10px]" style={{ color: 'var(--ink-secondary)' }}>
+                        One to One
+                      </span>
+                      <span className="text-[15px] font-bold">{formatEur(oto)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                        N° Preve
+                      </span>
+                      <NumericCellInput
+                        value={qty}
+                        integer
+                        onCommit={(v) =>
+                          isTotalMinusMode && pid === primaryPrId
+                            ? handlePrimaryPresaleEditInTotalMode('quantity', v)
+                            : onUpsertPresale(event.id, pid, { quantity: v })
+                        }
+                        ariaLabel={`Prevendite ${meta.display_name}`}
+                      />
+                    </div>
+                    <div>
+                      <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                        Incasso (€)
+                      </span>
+                      <NumericCellInput
+                        value={rev}
+                        onCommit={(v) =>
+                          isTotalMinusMode && pid === primaryPrId
+                            ? handlePrimaryPresaleEditInTotalMode('revenue', v)
+                            : onUpsertPresale(event.id, pid, { revenue: v })
+                        }
+                        ariaLabel={`Incasso ${meta.display_name}`}
+                      />
+                    </div>
+                    <div>
+                      <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                        1-to-1 (€)
+                      </span>
+                      <NumericCellInput
+                        value={oto}
+                        onCommit={(v) =>
+                          isTotalMinusMode && pid === primaryPrId
+                            ? handlePrimaryPresaleEditInTotalMode('one_to_one', v)
+                            : onUpsertPresale(event.id, pid, { one_to_one: v })
+                        }
+                        ariaLabel={`One to One ${meta.display_name}`}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {!isTotalMinusMode && (
+            <div
+              className="flex items-center justify-between rounded-[12px] px-4 py-2.5 text-[13px] font-semibold tabular-nums"
+              style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
+            >
+              <span>Totale</span>
+              <span>
+                {formatInt(summary.pxPresales)} preve · {formatEur(summary.revenuePresales)} · 1to1{' '}
+                {formatEur(summary.oneToOnePresales)}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Desktop Prevendite Table */}
+        <div className="hidden md:block apple-surface rounded-[16px] overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[480px]">
             <thead>
               <tr
@@ -860,19 +1402,21 @@ export function EventDetail({
                 <th className="py-3 pl-4 pr-2 font-medium">Promoter</th>
                 <th className="py-3 px-2 text-right font-medium w-[140px]">Totale prevendite</th>
                 <th className="py-3 px-2 text-right font-medium w-[150px]">Incasso (€)</th>
-                <th className="py-3 pl-2 pr-4 text-right font-medium w-[160px]">
+                <th className="py-3 pl-2 pr-4 text-right font-medium w-[180px]">
                   Totale One to One (€)
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--separator)] text-[14px]">
-              {/* Optional editable TOTALE row at top when in Totale - Lollo mode */}
               {isTotalMinusMode && (
                 <tr style={{ backgroundColor: 'var(--bg-hover)' }}>
                   <td className="py-2.5 pl-4 pr-2 font-semibold">
                     Totale serata
-                    <span className="ml-2 text-[11px] font-normal" style={{ color: 'var(--ink-tertiary)' }}>
-                      (auto-calcola {getPromoter(secondaryPrId).display_name})
+                    <span
+                      className="ml-2 text-[11px] font-normal"
+                      style={{ color: 'var(--ink-tertiary)' }}
+                    >
+                      (calcola {getPromoter(secondaryPrId).display_name} in automatico)
                     </span>
                   </td>
                   <td className="py-2.5 px-2">
@@ -892,12 +1436,32 @@ export function EventDetail({
                     />
                   </td>
                   <td className="py-2.5 pl-2 pr-4">
-                    <NumericCellInput
-                      value={summary.oneToOnePresales}
-                      prefix="€"
-                      onCommit={(v) => handleTotalPresaleEdit('one_to_one', v)}
-                      ariaLabel="Totale One to One prevendite"
-                    />
+                    <div className="flex items-center justify-end gap-1.5">
+                      <NumericCellInput
+                        value={summary.oneToOnePresales}
+                        prefix="€"
+                        onCommit={(v) => handleTotalPresaleEdit('one_to_one', v)}
+                        ariaLabel="Totale One to One prevendite"
+                        className="flex-1"
+                      />
+                      {summary.revenuePresales > 0 &&
+                        summary.oneToOnePresales !== summary.revenuePresales && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleTotalPresaleEdit('one_to_one', summary.revenuePresales)
+                            }
+                            title="Imposta One to One uguale all'Incasso"
+                            className="shrink-0 rounded-[7px] px-2 py-1 text-[11px] font-semibold apple-press cursor-pointer"
+                            style={{
+                              backgroundColor: 'var(--accent-subtle)',
+                              color: 'var(--accent)',
+                            }}
+                          >
+                            = Inc.
+                          </button>
+                        )}
+                    </div>
                   </td>
                 </tr>
               )}
@@ -920,7 +1484,13 @@ export function EventDetail({
                         />
                         <span className="font-medium">{meta.full_name}</span>
                         {isDerivedSecondary && (
-                          <span className="text-[11px]" style={{ color: 'var(--ink-tertiary)' }}>
+                          <span
+                            className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                            style={{
+                              backgroundColor: 'var(--bg-surface-secondary)',
+                              color: 'var(--ink-secondary)',
+                            }}
+                          >
                             Auto
                           </span>
                         )}
@@ -968,23 +1538,43 @@ export function EventDetail({
                           {formatEur(oto)}
                         </div>
                       ) : (
-                        <NumericCellInput
-                          value={oto}
-                          prefix="€"
-                          onCommit={(v) =>
-                            isTotalMinusMode && pid === primaryPrId
-                              ? handlePrimaryPresaleEditInTotalMode('one_to_one', v)
-                              : onUpsertPresale(event.id, pid, { one_to_one: v })
-                          }
-                          ariaLabel={`One to One ${meta.display_name}`}
-                        />
+                        <div className="flex items-center justify-end gap-1.5">
+                          <NumericCellInput
+                            value={oto}
+                            prefix="€"
+                            onCommit={(v) =>
+                              isTotalMinusMode && pid === primaryPrId
+                                ? handlePrimaryPresaleEditInTotalMode('one_to_one', v)
+                                : onUpsertPresale(event.id, pid, { one_to_one: v })
+                            }
+                            ariaLabel={`One to One ${meta.display_name}`}
+                            className="flex-1"
+                          />
+                          {rev > 0 && oto !== rev && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                isTotalMinusMode && pid === primaryPrId
+                                  ? handlePrimaryPresaleEditInTotalMode('one_to_one', rev)
+                                  : onUpsertPresale(event.id, pid, { one_to_one: rev })
+                              }
+                              title="Imposta One to One uguale all'Incasso"
+                              className="shrink-0 rounded-[7px] px-2 py-1 text-[11px] font-semibold apple-press cursor-pointer"
+                              style={{
+                                backgroundColor: 'var(--accent-subtle)',
+                                color: 'var(--accent)',
+                              }}
+                            >
+                              = Inc.
+                            </button>
+                          )}
+                        </div>
                       )}
                     </td>
                   </tr>
                 );
               })}
 
-              {/* Summary Footer Row when in normal per_pr mode */}
               {!isTotalMinusMode && (
                 <tr
                   className="font-semibold tabular-nums"
@@ -993,7 +1583,9 @@ export function EventDetail({
                   <td className="py-2.5 pl-4 pr-2">Totale prevendite</td>
                   <td className="py-2.5 px-4 text-right">{formatInt(summary.pxPresales)}</td>
                   <td className="py-2.5 px-4 text-right">{formatEur(summary.revenuePresales)}</td>
-                  <td className="py-2.5 pl-2 pr-6 text-right">{formatEur(summary.oneToOnePresales)}</td>
+                  <td className="py-2.5 pl-2 pr-6 text-right">
+                    {formatEur(summary.oneToOnePresales)}
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -1038,7 +1630,10 @@ export function EventDetail({
             </button>
             <button
               type="button"
-              onClick={() => setShowAddTableModal(true)}
+              onClick={() => {
+                setShowModalExtras(false);
+                setShowAddTableModal(true);
+              }}
               className="inline-flex items-center gap-1.5 rounded-[10px] px-3.5 py-1.5 text-[13px] font-semibold text-white apple-press cursor-pointer"
               style={{ backgroundColor: 'var(--accent)' }}
             >
@@ -1244,7 +1839,7 @@ export function EventDetail({
                     value={newTableName}
                     onChange={(e) => setNewTableName(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleQuickAddTable();
+                      if (e.key === 'Enter') handleQuickAddTable(false);
                     }}
                     placeholder="Nuovo tavolo…"
                     aria-label="Nome nuovo tavolo"
@@ -1268,10 +1863,16 @@ export function EventDetail({
                 </td>
                 {showSurcharge && (
                   <>
-                    <td className="py-2.5 px-1.5 text-center text-[12px]" style={{ color: 'var(--ink-tertiary)' }}>
+                    <td
+                      className="py-2.5 px-1.5 text-center text-[12px]"
+                      style={{ color: 'var(--ink-tertiary)' }}
+                    >
                       —
                     </td>
-                    <td className="py-2.5 px-1.5 text-center text-[12px]" style={{ color: 'var(--ink-tertiary)' }}>
+                    <td
+                      className="py-2.5 px-1.5 text-center text-[12px]"
+                      style={{ color: 'var(--ink-tertiary)' }}
+                    >
                       —
                     </td>
                   </>
@@ -1290,7 +1891,10 @@ export function EventDetail({
                     ariaLabel="Extra sì scarico nuovo tavolo"
                   />
                 </td>
-                <td className="py-2.5 px-2 text-right font-semibold tabular-nums text-[13px] whitespace-nowrap" style={{ color: 'var(--ink-secondary)' }}>
+                <td
+                  className="py-2.5 px-2 text-right font-semibold tabular-nums text-[13px] whitespace-nowrap"
+                  style={{ color: 'var(--ink-secondary)' }}
+                >
                   {formatEur(
                     newTablePayers * newTablePrice + newTableExtraNo + newTableExtraSi
                   )}
@@ -1304,7 +1908,7 @@ export function EventDetail({
                 <td colSpan={2} className="py-2.5 pr-3 text-right">
                   <button
                     type="button"
-                    onClick={() => handleQuickAddTable()}
+                    onClick={() => handleQuickAddTable(false)}
                     className="inline-flex items-center gap-1 rounded-[8px] px-3 py-1.5 text-[12px] font-semibold text-white apple-press cursor-pointer"
                     style={{ backgroundColor: 'var(--accent)' }}
                   >
@@ -1317,7 +1921,7 @@ export function EventDetail({
           </table>
         </div>
 
-        {/* Mobile Cards for Tavoli */}
+        {/* Mobile Smart Cards for Tavoli (Stepper + 1-tap PR + 1-tap Scarico + expandable Extra) */}
         <div className="md:hidden space-y-2.5">
           {event.tables.length === 0 ? (
             <div className="apple-surface rounded-[16px] p-6 text-center">
@@ -1326,8 +1930,11 @@ export function EventDetail({
               </p>
               <button
                 type="button"
-                onClick={() => setShowAddTableModal(true)}
-                className="mt-3 inline-flex items-center gap-1.5 rounded-[10px] px-4 py-2 text-[14px] font-semibold text-white apple-press cursor-pointer"
+                onClick={() => {
+                  setShowModalExtras(false);
+                  setShowAddTableModal(true);
+                }}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-[10px] px-4 py-2.5 text-[14px] font-semibold text-white apple-press cursor-pointer"
                 style={{ backgroundColor: 'var(--accent)' }}
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
@@ -1338,14 +1945,22 @@ export function EventDetail({
             event.tables.map((t) => {
               const tc = computeTable(t);
               const meta = getPromoter(t.promoter_id);
+              const hasExtras =
+                t.extra_no_scarico > 0 ||
+                t.extra_si_scarico > 0 ||
+                t.surcharge_payers_count > 0 ||
+                t.surcharge_price > 0;
+              const isExpanded = Boolean(expandedMobileTables[t.id]);
+
               return (
                 <div key={t.id} className="apple-surface rounded-[16px] p-3.5 space-y-3">
+                  {/* Card Header: PR + Name + Credito + Delete */}
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <button
                         type="button"
                         onClick={() => cycleTablePromoter(t)}
-                        className="shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold apple-press cursor-pointer"
+                        className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold apple-press cursor-pointer"
                         style={{ backgroundColor: `${meta.color}1A`, color: meta.color }}
                       >
                         {meta.display_name}
@@ -1361,18 +1976,18 @@ export function EventDetail({
                             onUpdateTable(event.id, t.id, { table_name: v || 'Tavolo' });
                           }
                         }}
-                        className="font-semibold text-[15px] bg-transparent outline-none min-w-0 flex-1 truncate"
+                        className="font-semibold text-[16px] bg-transparent outline-none min-w-0 flex-1 truncate"
                       />
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="text-[15px] font-bold tabular-nums">
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-[16px] font-bold tabular-nums">
                         {formatEur(tc.credito)}
                       </span>
                       <button
                         type="button"
                         onClick={() => onDeleteTable(event.id, t.id)}
                         aria-label={`Rimuovi ${t.table_name}`}
-                        className="p-1.5 rounded-full"
+                        className="p-2 rounded-full apple-press cursor-pointer"
                         style={{ color: 'var(--status-red)' }}
                       >
                         <Trash2 className="h-4 w-4" aria-hidden="true" />
@@ -1380,57 +1995,30 @@ export function EventDetail({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-4 gap-2">
-                    <div>
-                      <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
-                        Paganti
-                      </span>
-                      <NumericCellInput
+                  {/* Primary Fast Row: Stepper Paganti + Prezzo € + Scarico Pill */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <AppleStepper
+                        size="sm"
                         value={t.payers_count}
-                        integer
-                        onCommit={(v) => onUpdateTable(event.id, t.id, { payers_count: v })}
-                        ariaLabel="Paganti"
+                        label={`Paganti ${t.table_name}`}
+                        onChange={(next) =>
+                          onUpdateTable(event.id, t.id, { payers_count: next })
+                        }
                       />
-                    </div>
-                    <div>
-                      <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
-                        Prezzo
+                      <span className="text-[12px]" style={{ color: 'var(--ink-tertiary)' }}>
+                        ×
                       </span>
-                      <NumericCellInput
-                        value={t.price}
-                        prefix="€"
-                        onCommit={(v) => onUpdateTable(event.id, t.id, { price: v })}
-                        ariaLabel="Prezzo"
-                      />
+                      <div className="w-[74px]">
+                        <NumericCellInput
+                          value={t.price}
+                          prefix="€"
+                          onCommit={(v) => onUpdateTable(event.id, t.id, { price: v })}
+                          ariaLabel={`Prezzo ${t.table_name}`}
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
-                        Ex. No sc.
-                      </span>
-                      <NumericCellInput
-                        value={t.extra_no_scarico}
-                        prefix="€"
-                        onCommit={(v) => onUpdateTable(event.id, t.id, { extra_no_scarico: v })}
-                        ariaLabel="Extra no scarico"
-                      />
-                    </div>
-                    <div>
-                      <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
-                        Ex. Sì sc.
-                      </span>
-                      <NumericCellInput
-                        value={t.extra_si_scarico}
-                        prefix="€"
-                        onCommit={(v) => onUpdateTable(event.id, t.id, { extra_si_scarico: v })}
-                        ariaLabel="Extra sì scarico"
-                      />
-                    </div>
-                  </div>
 
-                  <div
-                    className="flex items-center justify-between pt-2"
-                    style={{ borderTop: '0.5px solid var(--separator)' }}
-                  >
                     <ScaricoPill
                       status={t.scarico_status}
                       onClick={() =>
@@ -1439,16 +2027,114 @@ export function EventDetail({
                         })
                       }
                     />
+                  </div>
+
+                  {/* Footer / Expandable Extras */}
+                  <div
+                    className="flex items-center justify-between pt-2"
+                    style={{ borderTop: '0.5px solid var(--separator)' }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedMobileTables((prev) => ({ ...prev, [t.id]: !prev[t.id] }))
+                      }
+                      className="inline-flex items-center gap-1 text-[12px] font-medium cursor-pointer"
+                      style={{ color: hasExtras ? 'var(--accent)' : 'var(--ink-tertiary)' }}
+                    >
+                      {isExpanded
+                        ? 'Chiudi extra'
+                        : hasExtras
+                          ? `Extra: ${formatEur(
+                              t.extra_no_scarico +
+                                t.extra_si_scarico +
+                                t.surcharge_payers_count * t.surcharge_price
+                            )}`
+                          : 'Extra / Sovraprezzo'}
+                      {isExpanded ? (
+                        <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+                      ) : (
+                        <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                      )}
+                    </button>
                     <span className="text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
                       Da scaricare: <strong>{formatEur(tc.scaricoApplied)}</strong>
                     </span>
                   </div>
+
+                  {isExpanded && (
+                    <div className="grid grid-cols-2 gap-2.5 pt-1">
+                      <div>
+                        <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                          Extra No scar. (€)
+                        </span>
+                        <NumericCellInput
+                          value={t.extra_no_scarico}
+                          prefix="€"
+                          onCommit={(v) => onUpdateTable(event.id, t.id, { extra_no_scarico: v })}
+                          ariaLabel="Extra no scarico"
+                        />
+                      </div>
+                      <div>
+                        <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                          Extra Sì scar. (€)
+                        </span>
+                        <NumericCellInput
+                          value={t.extra_si_scarico}
+                          prefix="€"
+                          onCommit={(v) => onUpdateTable(event.id, t.id, { extra_si_scarico: v })}
+                          ariaLabel="Extra sì scarico"
+                        />
+                      </div>
+                      <div>
+                        <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                          Paganti 2 (sovrapr.)
+                        </span>
+                        <NumericCellInput
+                          value={t.surcharge_payers_count}
+                          integer
+                          onCommit={(v) =>
+                            onUpdateTable(event.id, t.id, { surcharge_payers_count: v })
+                          }
+                          ariaLabel="Paganti sovraprezzo"
+                        />
+                      </div>
+                      <div>
+                        <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                          Sovraprezzo (€)
+                        </span>
+                        <NumericCellInput
+                          value={t.surcharge_price}
+                          prefix="€"
+                          onCommit={(v) => onUpdateTable(event.id, t.id, { surcharge_price: v })}
+                          ariaLabel="Sovraprezzo"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })
           )}
         </div>
       </section>
+
+      {/* Mobile Floating Thumb-Friendly "+ Tavolo" Button */}
+      <button
+        type="button"
+        onClick={() => {
+          setShowModalExtras(false);
+          setShowAddTableModal(true);
+        }}
+        className="md:hidden fixed right-4 bottom-[calc(72px+env(safe-area-inset-bottom))] z-20 inline-flex items-center gap-1.5 rounded-full px-4 py-3 text-[14px] font-semibold text-white apple-press cursor-pointer"
+        style={{
+          backgroundColor: 'var(--accent)',
+          boxShadow: '0 8px 24px rgba(0, 113, 227, 0.38)',
+        }}
+      >
+        <Plus className="h-4 w-4" aria-hidden="true" />
+        Tavolo
+      </button>
 
       {/* Add Table Modal / Mobile Bottom Sheet */}
       <AppleModal
@@ -1457,9 +2143,18 @@ export function EventDetail({
         title="Nuovo tavolo"
         subtitle={`${event.venue_name} · ${event.title}`}
       >
-        <form onSubmit={handleQuickAddTable} className="space-y-4">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleQuickAddTable(false);
+          }}
+          className="space-y-4"
+        >
           <div>
-            <span className="block text-[13px] font-medium mb-1.5" style={{ color: 'var(--ink-secondary)' }}>
+            <span
+              className="block text-[13px] font-medium mb-1.5"
+              style={{ color: 'var(--ink-secondary)' }}
+            >
               Promoter
             </span>
             <SegmentedControl
@@ -1480,6 +2175,7 @@ export function EventDetail({
               Nome tavolo
             </label>
             <input
+              ref={modalTableNameRef}
               id="add-tbl-name"
               type="text"
               required
@@ -1487,86 +2183,91 @@ export function EventDetail({
               placeholder="Es. Savage, Privè, Compleanno…"
               value={newTableName}
               onChange={(e) => setNewTableName(e.target.value)}
-              className="apple-input w-full rounded-[10px] px-3 py-2.5 text-[15px]"
+              className="apple-input w-full rounded-[10px] px-3 py-2.5 text-[16px] md:text-[15px]"
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <span className="block text-[13px] font-medium mb-1.5" style={{ color: 'var(--ink-secondary)' }}>
+          {/* Fast Paganti Section: Stepper + Quick Chips */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[13px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
                 N° paganti
               </span>
-              <NumericCellInput
-                value={newTablePayers}
-                integer
-                onCommit={setNewTablePayers}
-                ariaLabel="Numero paganti"
-              />
+              <div className="flex items-center gap-2">
+                <AppleStepper
+                  value={newTablePayers}
+                  onChange={setNewTablePayers}
+                  label="Numero paganti"
+                />
+                <NumericCellInput
+                  value={newTablePayers}
+                  integer
+                  onCommit={setNewTablePayers}
+                  ariaLabel="Inserisci numero paganti"
+                  className="w-16"
+                />
+              </div>
             </div>
-            <div>
-              <span className="block text-[13px] font-medium mb-1.5" style={{ color: 'var(--ink-secondary)' }}>
-                Prezzo (€ / px)
+            <div className="flex flex-wrap gap-1.5">
+              {QUICK_PAYERS.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setNewTablePayers(n)}
+                  className="rounded-full px-3 py-1 text-[12px] font-semibold tabular-nums apple-press cursor-pointer"
+                  style={{
+                    backgroundColor:
+                      newTablePayers === n ? 'var(--accent)' : 'var(--bg-surface-secondary)',
+                    color: newTablePayers === n ? '#FFFFFF' : 'var(--ink-primary)',
+                  }}
+                >
+                  {n} px
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Fast Prezzo Section */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[13px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+                Prezzo a persona
               </span>
               <NumericCellInput
                 value={newTablePrice}
                 prefix="€"
                 onCommit={setNewTablePrice}
                 ariaLabel="Prezzo a persona"
+                className="w-28"
               />
             </div>
+            {settings.quick_table_prices.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {settings.quick_table_prices.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setNewTablePrice(p)}
+                    className="rounded-full px-3 py-1 text-[12px] font-semibold tabular-nums apple-press cursor-pointer"
+                    style={{
+                      backgroundColor:
+                        newTablePrice === p ? 'var(--accent)' : 'var(--bg-surface-secondary)',
+                      color: newTablePrice === p ? '#FFFFFF' : 'var(--ink-primary)',
+                    }}
+                  >
+                    {p} €
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Quick Table Price Chips */}
-          {settings.quick_table_prices.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[12px] mr-1" style={{ color: 'var(--ink-tertiary)' }}>
-                Prezzi rapidi:
-              </span>
-              {settings.quick_table_prices.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setNewTablePrice(p)}
-                  className="rounded-full px-3 py-1 text-[12px] font-semibold tabular-nums apple-press cursor-pointer"
-                  style={{
-                    backgroundColor:
-                      newTablePrice === p ? 'var(--accent)' : 'var(--bg-surface-secondary)',
-                    color: newTablePrice === p ? '#FFFFFF' : 'var(--ink-primary)',
-                  }}
-                >
-                  € {p}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <span className="block text-[13px] font-medium mb-1.5" style={{ color: 'var(--ink-secondary)' }}>
-                Extra No scarico (€)
-              </span>
-              <NumericCellInput
-                value={newTableExtraNo}
-                prefix="€"
-                onCommit={setNewTableExtraNo}
-                ariaLabel="Extra no scarico"
-              />
-            </div>
-            <div>
-              <span className="block text-[13px] font-medium mb-1.5" style={{ color: 'var(--ink-secondary)' }}>
-                Extra Sì scarico (€)
-              </span>
-              <NumericCellInput
-                value={newTableExtraSi}
-                prefix="€"
-                onCommit={setNewTableExtraSi}
-                ariaLabel="Extra sì scarico"
-              />
-            </div>
-          </div>
-
+          {/* Scarico Status */}
           <div>
-            <span className="block text-[13px] font-medium mb-1.5" style={{ color: 'var(--ink-secondary)' }}>
+            <span
+              className="block text-[13px] font-medium mb-1.5"
+              style={{ color: 'var(--ink-secondary)' }}
+            >
               Stato scarico
             </span>
             <SegmentedControl<ScaricoStatus>
@@ -1576,14 +2277,79 @@ export function EventDetail({
               className="w-full"
               options={[
                 { value: 'DA SCARICARE', label: 'Da scaricare' },
-                { value: 'DA NON SCARICARE', label: 'Da non scaricare' },
+                { value: 'DA NON SCARICARE', label: 'No scarico' },
                 { value: '-', label: '—' },
               ]}
             />
           </div>
 
+          {/* Collapsible Extra & Sovraprezzo */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowModalExtras((v) => !v)}
+              className="inline-flex items-center gap-1 text-[13px] font-medium cursor-pointer"
+              style={{ color: 'var(--accent)' }}
+            >
+              {showModalExtras ? 'Nascondi extra e sovraprezzo' : '+ Aggiungi extra o sovraprezzo'}
+              {showModalExtras ? (
+                <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
+            </button>
+            {showModalExtras && (
+              <div className="mt-2.5 grid grid-cols-2 gap-3">
+                <div>
+                  <span className="block text-[12px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                    Extra No scar. (€)
+                  </span>
+                  <NumericCellInput
+                    value={newTableExtraNo}
+                    prefix="€"
+                    onCommit={setNewTableExtraNo}
+                    ariaLabel="Extra no scarico"
+                  />
+                </div>
+                <div>
+                  <span className="block text-[12px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                    Extra Sì scar. (€)
+                  </span>
+                  <NumericCellInput
+                    value={newTableExtraSi}
+                    prefix="€"
+                    onCommit={setNewTableExtraSi}
+                    ariaLabel="Extra sì scarico"
+                  />
+                </div>
+                <div>
+                  <span className="block text-[12px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                    Paganti 2
+                  </span>
+                  <NumericCellInput
+                    value={newTableSurchargePayers}
+                    integer
+                    onCommit={setNewTableSurchargePayers}
+                    ariaLabel="Paganti sovraprezzo"
+                  />
+                </div>
+                <div>
+                  <span className="block text-[12px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                    Sovraprezzo (€)
+                  </span>
+                  <NumericCellInput
+                    value={newTableSurchargePrice}
+                    prefix="€"
+                    onCommit={setNewTableSurchargePrice}
+                    ariaLabel="Sovraprezzo"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           <div
-            className="flex items-center justify-between pt-3"
+            className="flex flex-wrap items-center justify-between gap-2 pt-3"
             style={{ borderTop: '0.5px solid var(--separator)' }}
           >
             <div className="tabular-nums">
@@ -1591,16 +2357,34 @@ export function EventDetail({
                 Credito stimato
               </span>
               <span className="text-[18px] font-bold">
-                {formatEur(newTablePayers * newTablePrice + newTableExtraNo + newTableExtraSi)}
+                {formatEur(
+                  newTablePayers * newTablePrice +
+                    newTableSurchargePayers * newTableSurchargePrice +
+                    newTableExtraNo +
+                    newTableExtraSi
+                )}
               </span>
             </div>
-            <button
-              type="submit"
-              className="rounded-[10px] px-5 py-2.5 text-[14px] font-semibold text-white apple-press cursor-pointer"
-              style={{ backgroundColor: 'var(--accent)' }}
-            >
-              Aggiungi tavolo
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleQuickAddTable(true)}
+                className="rounded-[10px] px-3.5 py-2.5 text-[13px] font-semibold apple-press cursor-pointer"
+                style={{
+                  backgroundColor: 'var(--bg-surface-secondary)',
+                  color: 'var(--ink-primary)',
+                }}
+              >
+                Salva e altro
+              </button>
+              <button
+                type="submit"
+                className="rounded-[10px] px-4 py-2.5 text-[14px] font-semibold text-white apple-press cursor-pointer"
+                style={{ backgroundColor: 'var(--accent)' }}
+              >
+                Aggiungi
+              </button>
+            </div>
           </div>
         </form>
       </AppleModal>
@@ -1629,7 +2413,7 @@ export function EventDetail({
                 const v = e.target.value.trim();
                 if (v && v !== event.title) onUpdateEvent(event.id, { title: v });
               }}
-              className="apple-input w-full rounded-[10px] px-3 py-2 text-[15px]"
+              className="apple-input w-full rounded-[10px] px-3 py-2 text-[16px] md:text-[15px]"
             />
           </div>
 
@@ -1652,7 +2436,7 @@ export function EventDetail({
                     venue_name: e.target.value,
                   });
                 }}
-                className="apple-input w-full rounded-[10px] px-3 py-2 text-[15px]"
+                className="apple-input w-full rounded-[10px] px-3 py-2 text-[16px] md:text-[15px]"
               >
                 {venues.map((v) => (
                   <option key={v.id} value={v.name}>
@@ -1674,7 +2458,7 @@ export function EventDetail({
                 type="date"
                 value={event.event_date}
                 onChange={(e) => onUpdateEvent(event.id, { event_date: e.target.value })}
-                className="apple-input w-full rounded-[10px] px-3 py-2 text-[15px] tabular-nums"
+                className="apple-input w-full rounded-[10px] px-3 py-2 text-[16px] md:text-[15px] tabular-nums"
               />
             </div>
           </div>
@@ -1698,11 +2482,23 @@ export function EventDetail({
                   onUpdateEvent(event.id, { general_note_text: e.target.value });
                 }
               }}
-              className="apple-input w-full rounded-[10px] px-3 py-2 text-[14px]"
+              className="apple-input w-full rounded-[10px] px-3 py-2 text-[16px] md:text-[14px]"
             />
           </div>
 
-          <div className="flex justify-end pt-2">
+          <div className="flex justify-between items-center pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShowEditMeta(false);
+                onDuplicateEvent(event);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[13px] font-medium apple-press cursor-pointer"
+              style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
+            >
+              <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+              Duplica serata
+            </button>
             <button
               type="button"
               onClick={() => setShowEditMeta(false)}
@@ -1729,7 +2525,7 @@ export function EventDetail({
             value={importText}
             onChange={(e) => setImportText(e.target.value)}
             placeholder="Es.&#10;Lorenzo Biondi	73	1354,50	1295,00&#10;Francesco Troiano	68	1120,00	1120,00"
-            className="apple-input w-full rounded-[12px] p-3 text-[13px] font-mono"
+            className="apple-input w-full rounded-[12px] p-3 text-[14px] font-mono"
           />
 
           {handleImportPreview.length > 0 && (
@@ -1782,7 +2578,7 @@ export function EventDetail({
         open={showDeleteConfirm}
         onClose={() => setShowDeleteConfirm(false)}
         title="Eliminare questa serata?"
-        subtitle={`Verranno rimossi tutti i tavoli e le prevendite di “${event.title}”. Potrai comunque annullare subito dopo.`}
+        subtitle={`Verranno rimossi tutti i tavoli e le prevendite di “${event.title}”. Potrai comunque annullare con il tasto Annulla.`}
         maxWidth="max-w-[400px]"
       >
         <div className="flex items-center justify-end gap-2.5 pt-2">

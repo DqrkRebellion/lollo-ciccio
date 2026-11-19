@@ -24,7 +24,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     { threshold: 2000, bonus: 100 },
   ],
   bonus_split_mode: 'revenue_proportional',
-  default_presale_input_mode: 'per_pr',
+  default_presale_input_mode: 'total_minus_primary',
   default_table_scarico: 'DA SCARICARE',
   quick_table_prices: [25, 30, 35, 50],
   show_surcharge_columns: false,

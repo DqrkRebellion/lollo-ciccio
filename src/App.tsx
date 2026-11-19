@@ -56,18 +56,36 @@ export default function App() {
     }
   }, [data.events, selectedEventId]);
 
-  // Global Apple keyboard shortcuts (⌘K search, ⌘N new event)
+  // Global Apple keyboard shortcuts (⌘K search, ⌘Z undo, ⌘⇧Z / Ctrl+Y redo)
   useEffect(() => {
     if (!session) return;
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'k') {
         e.preventDefault();
         setSearchOpen((o) => !o);
+        return;
+      }
+      const target = e.target as HTMLElement | null;
+      const isEditingText =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable);
+      if (isEditingText) return;
+
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        data.undo();
+      } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+        e.preventDefault();
+        data.redo();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [session]);
+  }, [session, data.undo, data.redo]);
 
   const openMancantiCount = useMemo(() => {
     let count = 0;
@@ -140,6 +158,10 @@ export default function App() {
           userColor={currentAccount.color}
           syncState={data.syncState}
           openMancantiCount={openMancantiCount}
+          canUndo={data.canUndo}
+          undoCount={data.undoCount}
+          lastUndoLabel={data.lastUndoLabel}
+          onUndo={data.undo}
           isDark={isDark}
           onToggleTheme={() => setPreference(isDark ? 'light' : 'dark')}
           onOpenSearch={() => setSearchOpen(true)}
@@ -166,6 +188,12 @@ export default function App() {
                   settings={data.settings}
                   promoters={data.promoters}
                   venues={data.venues}
+                  canUndo={data.canUndo}
+                  canRedo={data.canRedo}
+                  lastUndoLabel={data.lastUndoLabel}
+                  lastRedoLabel={data.lastRedoLabel}
+                  onUndo={data.undo}
+                  onRedo={data.redo}
                   onOpenNewEvent={() => setNewEventOpen(true)}
                   onUpdateEvent={data.updateEvent}
                   onDuplicateEvent={async (ev) => {
@@ -177,7 +205,9 @@ export default function App() {
                     if (selectedEventId === id) setSelectedEventId(null);
                   }}
                   onUpsertPresale={data.upsertPresale}
+                  onUpsertPresalesBatch={data.upsertPresalesBatch}
                   onUpsertReconciliation={data.upsertReconciliation}
+                  onUpsertReconciliationsBatch={data.upsertReconciliationsBatch}
                   onAddTable={data.addTable}
                   onUpdateTable={data.updateTable}
                   onDeleteTable={data.deleteTable}
@@ -211,7 +241,7 @@ export default function App() {
                     promoters={data.promoters}
                     onOpenEvent={handleOpenEventFromAnywhere}
                     onUpdateEvent={data.updateEvent}
-                    onUpsertReconciliation={data.upsertReconciliation}
+                    onUpsertReconciliationsBatch={data.upsertReconciliationsBatch}
                   />
                 )}
 

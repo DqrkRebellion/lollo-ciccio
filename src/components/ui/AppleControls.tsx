@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X } from 'lucide-react';
+import { Minus, Plus, X } from 'lucide-react';
 
 export const APPLE_SPRING = {
   type: 'spring' as const,
@@ -218,12 +218,77 @@ export function NumericCellInput({
             e.currentTarget.blur();
           }
         }}
-        className={`apple-input w-full rounded-[8px] py-1.5 text-[14px] font-medium tabular-nums ${
+        className={`apple-input w-full rounded-[8px] py-1.5 text-[16px] md:text-[14px] font-medium tabular-nums ${
           prefix ? 'pl-6 pr-2' : 'px-2.5'
         } ${
           align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
         }`}
       />
+    </div>
+  );
+}
+
+/**
+ * Apple iOS Stepper (− / value / +) for one-thumb rapid counting on phone.
+ */
+export function AppleStepper({
+  value,
+  onChange,
+  min = 0,
+  step = 1,
+  label,
+  size = 'md',
+}: {
+  value: number;
+  onChange: (next: number) => void;
+  min?: number;
+  step?: number;
+  label: string;
+  size?: 'sm' | 'md';
+}) {
+  const btnCls =
+    size === 'sm' ? 'h-8 w-8 text-[14px]' : 'h-10 w-10 text-[16px]';
+
+  return (
+    <div
+      className="inline-flex items-center rounded-[10px] p-0.5 select-none"
+      style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
+      aria-label={label}
+    >
+      <button
+        type="button"
+        disabled={value <= min}
+        onClick={() => onChange(Math.max(min, value - step))}
+        aria-label={`Riduci ${label}`}
+        className={`flex ${btnCls} items-center justify-center rounded-[8px] apple-press cursor-pointer disabled:opacity-30`}
+        style={{
+          backgroundColor: 'var(--bg-surface)',
+          color: 'var(--ink-primary)',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+        }}
+      >
+        <Minus className="h-3.5 w-3.5" aria-hidden="true" />
+      </button>
+      <span
+        className={`tabular-nums font-semibold text-center ${
+          size === 'sm' ? 'min-w-[34px] text-[14px]' : 'min-w-[44px] text-[16px]'
+        }`}
+      >
+        {value}
+      </span>
+      <button
+        type="button"
+        onClick={() => onChange(value + step)}
+        aria-label={`Aumenta ${label}`}
+        className={`flex ${btnCls} items-center justify-center rounded-[8px] apple-press cursor-pointer`}
+        style={{
+          backgroundColor: 'var(--bg-surface)',
+          color: 'var(--accent)',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+        }}
+      >
+        <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+      </button>
     </div>
   );
 }

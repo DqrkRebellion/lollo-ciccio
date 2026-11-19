@@ -104,7 +104,7 @@ export function NewEventModal({
             placeholder="Es. Opening, Halloween, Grey Goose…"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="apple-input w-full rounded-[10px] px-3 py-2.5 text-[15px]"
+            className="apple-input w-full rounded-[10px] px-3 py-2.5 text-[16px] md:text-[15px]"
           />
         </div>
 
@@ -121,7 +121,7 @@ export function NewEventModal({
               id="new-ev-venue"
               value={venueId}
               onChange={(e) => handleVenueSelect(e.target.value)}
-              className="apple-input w-full rounded-[10px] px-3 py-2.5 text-[15px]"
+              className="apple-input w-full rounded-[10px] px-3 py-2.5 text-[16px] md:text-[15px]"
             >
               {activeVenues.map((v) => (
                 <option key={v.id} value={v.id}>
@@ -146,7 +146,7 @@ export function NewEventModal({
               required
               value={eventDate}
               onChange={(e) => setEventDate(e.target.value)}
-              className="apple-input w-full rounded-[10px] px-3 py-2.5 text-[15px] tabular-nums"
+              className="apple-input w-full rounded-[10px] px-3 py-2.5 text-[16px] md:text-[15px] tabular-nums"
             />
           </div>
         </div>
@@ -167,7 +167,7 @@ export function NewEventModal({
               placeholder="Es. Cocoricò, Villa delle Rose…"
               value={customVenue}
               onChange={(e) => setCustomVenue(e.target.value)}
-              className="apple-input w-full rounded-[10px] px-3 py-2.5 text-[15px]"
+              className="apple-input w-full rounded-[10px] px-3 py-2.5 text-[16px] md:text-[15px]"
             />
           </div>
         )}

@@ -170,3 +170,10 @@ export interface EventSummary {
   byPromoter: Record<string, PrSummary>;
   promoterOrder: string[];
 }
+
+export interface UndoAction {
+  id: string;
+  label: string;
+  undo: () => Promise<void>;
+  redo: () => Promise<void>;
+}
