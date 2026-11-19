@@ -1,32 +1,11 @@
-# React + TypeScript + Vite
+# Lollo & Ciccio — Gestione Serate PR
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Web app in stile Apple (iOS / macOS) per monitorare prevendite, tavoli, scarichi cassa, mancanti, buste e statistiche generali delle serate PR di Lollo & Ciccio.
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
-
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## Funzionalità principali
+- **Gestione Serate**: calcolo automatico in tempo reale di ingressi (PX), fatturato, scarichi, mancanti, busta totale e suddivisione proporzionale per PR (inclusi scaglioni bonus e modalità `No Ospite 10%` / `Ospite 8%`).
+- **Prevendite & Tavoli**: inserimento rapido per PR o modalità `Totale − Lollo`, import report TicketSMS/CSV, gestione `Extra No scarico`, `Extra Sì scarico`, colonne `Sovraprezzo` opzionali e copia riepilogo WhatsApp.
+- **Dashboard Statistiche**: andamento mensile, testa a testa Lollo vs Ciccio, classifica locali, mix prevendite/tavoli, confronto Ospite vs No Ospite e Hall of Fame di serate e tavoli record.
+- **Saldi & Buste**: registro centralizzato di mancanti aperti e buste da incassare/saldate con saldo in un tap.
+- **Impostazioni complete**: provvigioni, scaglioni bonus, locali, team PR, tema Chiaro/Scuro/Sistema, prezzi rapidi, cambio PIN personale ed export CSV/JSON.
+- **Sincronizzazione live & Hosting 100% gratuito**: frontend su GitHub Pages + database Postgres & Realtime protetto da RLS su Supabase Free Tier con keep-alive automatico.

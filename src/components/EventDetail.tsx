@@ -456,26 +456,25 @@ export function EventDetail({
             <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Fatturato totale
             </span>
-            <div className="mt-1 text-[28px] font-bold tracking-tight tabular-nums leading-none">
+            <div className="mt-1 text-[26px] xl:text-[28px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap">
               {formatEur(summary.revenueTotal)}
             </div>
-            <div className="mt-2 flex items-center gap-3 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-              <span>Preve {formatEur(summary.revenuePresales)}</span>
-              <span>·</span>
-              <span>Tavoli {formatEur(summary.revenueTables)}</span>
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+              <span className="whitespace-nowrap">Preve {formatEur(summary.revenuePresales)}</span>
+              <span className="whitespace-nowrap">Tavoli {formatEur(summary.revenueTables)}</span>
             </div>
           </div>
 
           {/* Busta Totale */}
           <div className="p-4 sm:p-5">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+              <span className="text-[12px] font-medium whitespace-nowrap" style={{ color: 'var(--ink-secondary)' }}>
                 Busta serata
               </span>
               <button
                 type="button"
                 onClick={() => setShowFormula((s) => !s)}
-                className="inline-flex items-center gap-1 text-[11px] font-medium cursor-pointer"
+                className="inline-flex items-center gap-1 text-[11px] font-medium cursor-pointer whitespace-nowrap"
                 style={{ color: 'var(--accent)' }}
               >
                 <Info className="h-3 w-3" aria-hidden="true" />
@@ -483,15 +482,15 @@ export function EventDetail({
               </button>
             </div>
             <div
-              className="mt-1 text-[28px] font-bold tracking-tight tabular-nums leading-none"
+              className="mt-1 text-[26px] xl:text-[28px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap"
               style={{ color: event.is_busta_paid ? 'var(--status-green)' : 'var(--ink-primary)' }}
             >
               {formatEur(summary.bustaTotal, true)}
             </div>
-            <div className="mt-2 flex items-center gap-2 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
               {summary.bonusAmount > 0 ? (
                 <span
-                  className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                  className="rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap"
                   style={{ backgroundColor: 'var(--status-green-bg)', color: 'var(--status-green)' }}
                 >
                   Bonus +{formatEur(summary.bonusAmount)}
@@ -508,14 +507,14 @@ export function EventDetail({
           {/* Scarico & Mancanti */}
           <div className="p-4 sm:p-5">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-                Cassa · Mancanti
+              <span className="text-[12px] font-medium whitespace-nowrap" style={{ color: 'var(--ink-secondary)' }}>
+                Mancanti
               </span>
               {summary.mancantiTotal > 0.01 && (
                 <button
                   type="button"
                   onClick={handleSettleAll}
-                  className="text-[11px] font-semibold cursor-pointer apple-press"
+                  className="text-[11px] font-semibold cursor-pointer apple-press whitespace-nowrap"
                   style={{ color: 'var(--accent)' }}
                 >
                   Salda tutto
@@ -525,8 +524,9 @@ export function EventDetail({
             <div className="mt-1.5">
               <MancantiBadge value={summary.mancantiTotal} />
             </div>
-            <div className="mt-2 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-              Scarico {formatEur(summary.scaricoTotal)} · Versati {formatEur(summary.scaricatoTotal)}
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+              <span className="whitespace-nowrap">Scarico {formatEur(summary.scaricoTotal)}</span>
+              <span className="whitespace-nowrap">Versati {formatEur(summary.scaricatoTotal)}</span>
             </div>
           </div>
         </div>
@@ -547,12 +547,12 @@ export function EventDetail({
               <span className="tabular-nums font-medium">
                 {summary.nextBonusTier ? (
                   <>
-                    Mancano{' '}
+                    A{' '}
                     <strong style={{ color: 'var(--accent)' }}>
                       {formatEur(summary.amountToNextBonus)}
                     </strong>{' '}
-                    per bonus {formatEur(summary.nextBonusTier.bonus)} (soglia{' '}
-                    {formatEur(summary.nextBonusTier.threshold)})
+                    dalla soglia {formatEur(summary.nextBonusTier.threshold)} (bonus +
+                    {formatEur(summary.nextBonusTier.bonus)})
                   </>
                 ) : (
                   <span style={{ color: 'var(--status-green)' }}>
@@ -1050,7 +1050,7 @@ export function EventDetail({
 
         {/* Desktop Interactive Table */}
         <div className="hidden md:block apple-surface rounded-[16px] overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full text-left border-collapse min-w-[820px]">
             <thead>
               <tr
                 className="text-[12px] font-medium"
@@ -1059,20 +1059,20 @@ export function EventDetail({
                   borderBottom: '0.5px solid var(--separator)',
                 }}
               >
-                <th className="py-3 pl-4 pr-2 font-medium w-[90px]">PR</th>
-                <th className="py-3 px-2 font-medium min-w-[155px]">Nome tavolo</th>
-                <th className="py-3 px-1.5 text-right font-medium w-[74px]">Paganti</th>
-                <th className="py-3 px-1.5 text-right font-medium w-[86px]">Prezzo</th>
+                <th className="py-3 pl-4 pr-2 font-medium w-[86px]">PR</th>
+                <th className="py-3 px-2 font-medium min-w-[180px]">Nome tavolo</th>
+                <th className="py-3 px-1.5 text-right font-medium w-[72px]">Paganti</th>
+                <th className="py-3 px-1.5 text-right font-medium w-[80px]">Prezzo €</th>
                 {showSurcharge && (
                   <>
-                    <th className="py-3 px-1.5 text-right font-medium w-[74px]">Pag. 2</th>
-                    <th className="py-3 px-1.5 text-right font-medium w-[86px]">Sovrapr.</th>
+                    <th className="py-3 px-1.5 text-right font-medium w-[70px]">Pag. 2</th>
+                    <th className="py-3 px-1.5 text-right font-medium w-[84px]">Sovrapr. €</th>
                   </>
                 )}
-                <th className="py-3 px-1.5 text-right font-medium w-[92px]">Extra No sc.</th>
-                <th className="py-3 px-1.5 text-right font-medium w-[92px]">Extra Sì sc.</th>
-                <th className="py-3 px-2 text-right font-medium w-[88px]">Credito</th>
-                <th className="py-3 px-2 text-center font-medium w-[112px]">Scarico</th>
+                <th className="py-3 px-1.5 text-right font-medium w-[92px]">Extra No €</th>
+                <th className="py-3 px-1.5 text-right font-medium w-[92px]">Extra Sì €</th>
+                <th className="py-3 px-2 text-right font-medium w-[86px]">Credito</th>
+                <th className="py-3 px-2 text-center font-medium w-[108px]">Scarico</th>
                 <th className="py-3 px-2 text-right font-medium w-[84px]">Da scar.</th>
                 <th className="py-3 pr-3 w-[36px]" />
               </tr>
@@ -1141,7 +1141,6 @@ export function EventDetail({
                       <td className="py-2 px-1.5">
                         <NumericCellInput
                           value={t.price}
-                          prefix="€"
                           onCommit={(v) => onUpdateTable(event.id, t.id, { price: v })}
                           ariaLabel={`Prezzo ${t.table_name}`}
                         />
@@ -1161,7 +1160,6 @@ export function EventDetail({
                           <td className="py-2 px-1.5">
                             <NumericCellInput
                               value={t.surcharge_price}
-                              prefix="€"
                               onCommit={(v) =>
                                 onUpdateTable(event.id, t.id, { surcharge_price: v })
                               }
@@ -1173,7 +1171,6 @@ export function EventDetail({
                       <td className="py-2 px-1.5">
                         <NumericCellInput
                           value={t.extra_no_scarico}
-                          prefix="€"
                           onCommit={(v) => onUpdateTable(event.id, t.id, { extra_no_scarico: v })}
                           ariaLabel={`Extra no scarico ${t.table_name}`}
                         />
@@ -1181,12 +1178,11 @@ export function EventDetail({
                       <td className="py-2 px-1.5">
                         <NumericCellInput
                           value={t.extra_si_scarico}
-                          prefix="€"
                           onCommit={(v) => onUpdateTable(event.id, t.id, { extra_si_scarico: v })}
                           ariaLabel={`Extra sì scarico ${t.table_name}`}
                         />
                       </td>
-                      <td className="py-2 px-2 text-right font-semibold tabular-nums">
+                      <td className="py-2 px-2 text-right font-semibold tabular-nums whitespace-nowrap">
                         {formatEur(tc.credito)}
                       </td>
                       <td className="py-2 px-2 text-center">
@@ -1200,7 +1196,7 @@ export function EventDetail({
                         />
                       </td>
                       <td
-                        className="py-2 px-2 text-right font-medium tabular-nums"
+                        className="py-2 px-2 text-right font-medium tabular-nums whitespace-nowrap"
                         style={{
                           color:
                             t.scarico_status === 'DA SCARICARE'
@@ -1266,7 +1262,6 @@ export function EventDetail({
                 <td className="py-2.5 px-1.5">
                   <NumericCellInput
                     value={newTablePrice}
-                    prefix="€"
                     onCommit={setNewTablePrice}
                     ariaLabel="Prezzo nuovo tavolo"
                   />
@@ -1284,7 +1279,6 @@ export function EventDetail({
                 <td className="py-2.5 px-1.5">
                   <NumericCellInput
                     value={newTableExtraNo}
-                    prefix="€"
                     onCommit={setNewTableExtraNo}
                     ariaLabel="Extra no scarico nuovo tavolo"
                   />
@@ -1292,12 +1286,11 @@ export function EventDetail({
                 <td className="py-2.5 px-1.5">
                   <NumericCellInput
                     value={newTableExtraSi}
-                    prefix="€"
                     onCommit={setNewTableExtraSi}
                     ariaLabel="Extra sì scarico nuovo tavolo"
                   />
                 </td>
-                <td className="py-2.5 px-2 text-right font-semibold tabular-nums text-[13px]" style={{ color: 'var(--ink-secondary)' }}>
+                <td className="py-2.5 px-2 text-right font-semibold tabular-nums text-[13px] whitespace-nowrap" style={{ color: 'var(--ink-secondary)' }}>
                   {formatEur(
                     newTablePayers * newTablePrice + newTableExtraNo + newTableExtraSi
                   )}

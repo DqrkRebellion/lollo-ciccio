@@ -91,7 +91,7 @@ export function evaluateBonusTiers(
     }
   }
 
-  const amountToNext = nextTier ? round2(Math.max(0, nextTier.threshold - revenueTotal + 0.01)) : 0;
+  const amountToNext = nextTier ? round2(Math.max(0, nextTier.threshold - revenueTotal)) : 0;
   return { bonusAmount: matchedBonus, nextTier, amountToNext };
 }
 

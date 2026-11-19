@@ -325,16 +325,22 @@ export function MancantiBadge({ value, compact = false }: { value: number; compa
   const v = Math.round((Number(value) || 0) * 100) / 100;
   let bg = 'var(--status-green-bg)';
   let fg = 'var(--status-green)';
-  let label = compact ? 'Saldato' : '€\u00A00 · Saldato';
+  let label = compact ? 'Saldato' : '0\u00A0€ · Saldato';
+  const hasCents = Math.abs(v - Math.round(v)) > 0.001;
+  const formatted = v.toLocaleString('it-IT', {
+    useGrouping: 'always',
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: hasCents ? 2 : 0,
+  });
 
   if (v > 0.005) {
     bg = 'var(--status-red-bg)';
     fg = 'var(--status-red)';
-    label = `€\u00A0${v.toLocaleString('it-IT', { maximumFractionDigits: 2 })}`;
+    label = `${formatted}\u00A0€`;
   } else if (v < -0.005) {
     bg = 'var(--status-orange-bg)';
     fg = 'var(--status-orange)';
-    label = `€\u00A0${v.toLocaleString('it-IT', { maximumFractionDigits: 2 })}`;
+    label = `${formatted}\u00A0€`;
   }
 
   return (

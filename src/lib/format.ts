@@ -1,27 +1,32 @@
 import type { EventSummary, FullEvent, Promoter } from '../types';
 
-const eurFormatter = new Intl.NumberFormat('it-IT', {
+const eurIntFormatter = new Intl.NumberFormat('it-IT', {
   style: 'currency',
   currency: 'EUR',
+  useGrouping: 'always',
   minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
+  maximumFractionDigits: 0,
 });
 
 const eurExactFormatter = new Intl.NumberFormat('it-IT', {
   style: 'currency',
   currency: 'EUR',
+  useGrouping: 'always',
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
 
 const intFormatter = new Intl.NumberFormat('it-IT', {
+  useGrouping: 'always',
   maximumFractionDigits: 0,
 });
 
 export function formatEur(value: number, exact = false): string {
   const v = Number(value) || 0;
-  if (Object.is(v, -0) || Math.abs(v) < 0.005) return exact ? '€\u00A00,00' : '€\u00A00';
-  return (exact ? eurExactFormatter : eurFormatter).format(v);
+  if (Object.is(v, -0) || Math.abs(v) < 0.005) return exact ? '0,00\u00A0€' : '0\u00A0€';
+  const rounded = Math.round(v * 100) / 100;
+  const hasCents = Math.abs(rounded - Math.round(rounded)) > 0.001;
+  return (exact || hasCents ? eurExactFormatter : eurIntFormatter).format(rounded);
 }
 
 export function formatInt(value: number): string {
