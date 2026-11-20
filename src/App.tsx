@@ -14,6 +14,7 @@ import {
 import { useTheme } from './hooks/useTheme';
 import { useAppData } from './hooks/useAppData';
 import { useStaffData } from './hooks/useStaffData';
+import { useTicketSmsData } from './hooks/useTicketSmsData';
 import { LockScreen } from './components/LockScreen';
 import { BiometricSetupModal } from './components/BiometricSetupModal';
 import { AppShell, type NavTab } from './components/AppShell';
@@ -26,6 +27,9 @@ const StaffWorkspace = lazy(() =>
 );
 const CashCollectionView = lazy(() =>
   import('./components/CashCollectionView').then((m) => ({ default: m.CashCollectionView }))
+);
+const TicketSmsView = lazy(() =>
+  import('./components/TicketSmsView').then((m) => ({ default: m.TicketSmsView }))
 );
 const DashboardView = lazy(() =>
   import('./components/DashboardView').then((m) => ({ default: m.DashboardView }))
@@ -97,6 +101,7 @@ export default function App() {
   const staffData = useStaffData(isUnlocked, ownerPromoterId, data.pushUndo, () => {
     data.fetchAll(true);
   });
+  const ticketSmsData = useTicketSmsData(isUnlocked);
 
   const handleSelectNavTab = (tab: NavTab) => {
     if (tab === activeTab && (tab === 'events' || tab === 'staff') && selectedEventId) {
@@ -213,6 +218,11 @@ export default function App() {
           syncState={data.syncState}
           openMancantiCount={openMancantiCount}
           openStaffMancantiCount={openStaffMancantiCount}
+          ticketSmsAlert={
+            ticketSmsData.syncStatus?.status === 'session_expired' ||
+            ticketSmsData.syncStatus?.status === 'error'
+          }
+          ticketSmsActiveCount={ticketSmsData.activeEvents.length}
           canUndo={data.canUndo}
           undoCount={data.undoCount}
           lastUndoLabel={data.lastUndoLabel}
@@ -354,6 +364,8 @@ export default function App() {
                     }}
                   />
                 )}
+
+                {activeTab === 'ticketsms' && <TicketSmsView ticketSmsData={ticketSmsData} />}
 
                 {activeTab === 'dashboard' && (
                   <DashboardView

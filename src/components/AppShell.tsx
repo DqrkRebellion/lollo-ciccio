@@ -8,13 +8,21 @@ import {
   Search,
   Settings,
   Sun,
+  Ticket,
   Undo2,
   Users,
   Wallet,
 } from 'lucide-react';
 import type { SyncState } from '../hooks/useAppData';
 
-export type NavTab = 'events' | 'staff' | 'cash' | 'dashboard' | 'ledger' | 'settings';
+export type NavTab =
+  | 'events'
+  | 'staff'
+  | 'cash'
+  | 'ticketsms'
+  | 'dashboard'
+  | 'ledger'
+  | 'settings';
 
 export function AppShell({
   activeTab,
@@ -26,6 +34,8 @@ export function AppShell({
   syncState,
   openMancantiCount,
   openStaffMancantiCount,
+  ticketSmsAlert = false,
+  ticketSmsActiveCount = 0,
   canUndo,
   undoCount,
   lastUndoLabel,
@@ -45,6 +55,8 @@ export function AppShell({
   syncState: SyncState;
   openMancantiCount: number;
   openStaffMancantiCount: number;
+  ticketSmsAlert?: boolean;
+  ticketSmsActiveCount?: number;
   canUndo: boolean;
   undoCount: number;
   lastUndoLabel: string | null;
@@ -61,6 +73,7 @@ export function AppShell({
     shortLabel: string;
     icon: React.ComponentType<{ className?: string }>;
     badge?: number;
+    alertDot?: boolean;
   }[] = [
     { id: 'events', label: 'Serate', shortLabel: 'Serate', icon: CalendarRange },
     {
@@ -76,6 +89,14 @@ export function AppShell({
       shortLabel: 'Raccolta',
       icon: Banknote,
     },
+    {
+      id: 'ticketsms',
+      label: 'TicketSMS',
+      shortLabel: 'TicketSMS',
+      icon: Ticket,
+      badge: !ticketSmsAlert && ticketSmsActiveCount > 0 ? ticketSmsActiveCount : undefined,
+      alertDot: ticketSmsAlert,
+    },
     { id: 'dashboard', label: 'Dashboard', shortLabel: 'Stats', icon: BarChart3 },
     {
       id: 'ledger',
@@ -87,8 +108,10 @@ export function AppShell({
     { id: 'settings', label: 'Impostazioni', shortLabel: 'Altro', icon: Settings },
   ];
 
-  // Clean 5-tab iOS bottom bar (Impostazioni lives in the top-right profile avatar on mobile!)
-  const mobileNavItems = desktopNavItems.filter((item) => item.id !== 'settings');
+  // Clean 5-tab iOS bottom bar (TicketSMS & Impostazioni are 1 tap away in the mobile top header!)
+  const mobileNavItems = desktopNavItems.filter(
+    (item) => item.id !== 'settings' && item.id !== 'ticketsms'
+  );
 
   const syncLabel =
     syncState === 'live'
@@ -185,16 +208,28 @@ export function AppShell({
                     <Icon className="h-[17px] w-[17px]" aria-hidden="true" />
                     {item.label}
                   </span>
-                  {item.badge !== undefined && (
+                  {item.alertDot ? (
                     <span
-                      className="rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums leading-none"
-                      style={{
-                        backgroundColor: 'var(--status-red-bg)',
-                        color: 'var(--status-red)',
-                      }}
-                    >
-                      {item.badge}
-                    </span>
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: '#FF9500' }}
+                      title="Attenzione sincronizzazione TicketSMS"
+                    />
+                  ) : (
+                    item.badge !== undefined && (
+                      <span
+                        className="rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums leading-none"
+                        style={{
+                          backgroundColor:
+                            item.id === 'ticketsms'
+                              ? 'var(--accent-subtle)'
+                              : 'var(--status-red-bg)',
+                          color:
+                            item.id === 'ticketsms' ? 'var(--accent)' : 'var(--status-red)',
+                        }}
+                      >
+                        {item.badge}
+                      </span>
+                    )
                   )}
                 </button>
               );
@@ -314,6 +349,26 @@ export function AppShell({
           >
             <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />
             {canUndo && <span className="tabular-nums">{undoCount}</span>}
+          </button>
+          <button
+            type="button"
+            onClick={() => onSelectTab('ticketsms')}
+            aria-label="TicketSMS"
+            title="TicketSMS"
+            className="relative flex h-8 w-8 items-center justify-center rounded-full apple-press cursor-pointer"
+            style={{
+              backgroundColor:
+                activeTab === 'ticketsms' ? 'var(--accent)' : 'var(--bg-surface-secondary)',
+              color: activeTab === 'ticketsms' ? '#FFFFFF' : 'var(--ink-primary)',
+            }}
+          >
+            <Ticket className="h-4 w-4" aria-hidden="true" />
+            {ticketSmsAlert && (
+              <span
+                className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-[var(--bg-surface)]"
+                style={{ backgroundColor: '#FF9500' }}
+              />
+            )}
           </button>
           <button
             type="button"
