@@ -529,17 +529,26 @@ export function StaffEventDetail({
             >
               {formatEur(ownerMainBusta, true)}
             </div>
-            <div className="mt-1.5 text-[11px] sm:text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+            <div
+              className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] sm:text-[12px] tabular-nums"
+              style={{ color: 'var(--ink-secondary)' }}
+            >
               {ownerPrSummary ? (
                 <>
-                  Preve {formatEur(ownerPrSummary.bustaPresales)} · Tav.{' '}
-                  {formatEur(ownerPrSummary.bustaTables)}
-                  {ownerPrSummary.bustaBonusShare > 0
-                    ? ` · +${formatEur(ownerPrSummary.bustaBonusShare)}`
-                    : ''}
+                  <span className="whitespace-nowrap">
+                    Preve {formatEur(ownerPrSummary.bustaPresales)}
+                  </span>
+                  <span className="whitespace-nowrap">
+                    Tav. {formatEur(ownerPrSummary.bustaTables)}
+                  </span>
+                  {ownerPrSummary.bustaBonusShare > 0 && (
+                    <span className="whitespace-nowrap" style={{ color: 'var(--status-green)' }}>
+                      +{formatEur(ownerPrSummary.bustaBonusShare)} bonus
+                    </span>
+                  )}
                 </>
               ) : (
-                'Dal foglio Lollo & Ciccio'
+                <span>Dal foglio Lollo &amp; Ciccio</span>
               )}
             </div>
           </div>
@@ -1492,6 +1501,15 @@ export function StaffEventDetail({
                             onCommit={(v) => onUpdateTable(ct.row.id, { extra: v })}
                             ariaLabel="Extra"
                           />
+                          {ct.row.extra_no_scarico > 0 && (
+                            <div
+                              className="mt-0.5 text-right text-[10px] tabular-nums whitespace-nowrap"
+                              style={{ color: 'var(--ink-tertiary)' }}
+                              title="Extra no scarico (sincronizzato da Lollo & Ciccio)"
+                            >
+                              +{formatEur(ct.row.extra_no_scarico)} no sc.
+                            </div>
+                          )}
                         </td>
                         <td className="py-2 px-2 text-right font-semibold tabular-nums whitespace-nowrap">
                           {formatEur(ct.credito)}
@@ -1554,7 +1572,7 @@ export function StaffEventDetail({
                             <MancantiBadge value={ct.mancanti} compact />
                           )}
                         </td>
-                        <td className="py-2 px-2 text-right tabular-nums whitespace-nowrap">
+                        <td className="py-2 pl-2 pr-4 text-right tabular-nums whitespace-nowrap">
                           <div className="font-bold">{formatEur(ct.bustaFinal, true)}</div>
                           {combinedBonus && ct.rateApplied > 0 && (
                             <div className="text-[10px] font-semibold" style={{ color: '#5856D6' }}>
@@ -1562,7 +1580,7 @@ export function StaffEventDetail({
                             </div>
                           )}
                         </td>
-                        <td className="py-2 px-2 text-center">
+                        <td className="py-2 px-2.5 text-center">
                           <div className="flex justify-center">
                             <AppleSwitch
                               checked={ct.row.is_busta_paid}
