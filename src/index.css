@@ -143,6 +143,12 @@
   box-shadow: var(--shadow-card);
 }
 
+.apple-card {
+  background-color: var(--bg-surface);
+  box-shadow: var(--shadow-card);
+  border-radius: 16px;
+}
+
 .apple-chrome {
   background-color: var(--bg-chrome);
   backdrop-filter: blur(22px) saturate(180%);
@@ -215,7 +221,14 @@ input[type="number"] {
   }
 }
 
-/* Reduced transparency & reduced motion (Apple HIG §14) */
+/* Reduced transparency, high contrast & reduced motion (Apple HIG §14) */
+@media (prefers-contrast: more) {
+  .apple-surface,
+  .apple-card {
+    border: 1px solid var(--separator-strong);
+  }
+}
+
 @media (prefers-reduced-transparency: reduce) {
   .apple-chrome,
   .apple-sidebar {

@@ -25,6 +25,7 @@ import {
   NumericCellInput,
   SegmentedControl,
 } from './ui/AppleControls';
+import { StaffMemberPicker, StaffMemberPickerButton } from './ui/StaffMemberPicker';
 import { computeTable, resolveRules } from '../lib/calculations';
 import {
   buildWhatsAppSummary,
@@ -48,6 +49,7 @@ import type {
   ScaricoStatus,
   Venue,
 } from '../types';
+import type { StaffEventSummary, StaffEventTable, StaffMember } from '../types/staff';
 
 const SCARICO_CYCLE: ScaricoStatus[] = ['DA SCARICARE', 'DA NON SCARICARE', '-'];
 const QUICK_PAYERS = [5, 8, 10, 12, 15, 20];
@@ -94,13 +96,19 @@ export function EventDetail({
   settings,
   promoters,
   venues,
+  ownerPromoterId,
+  staffGroupName,
+  staffSummary,
+  staffMembers = [],
+  staffMemberUsageScore,
+  staffTableByEventTableId,
   canUndo,
   canRedo,
   lastUndoLabel,
   lastRedoLabel,
   onUndo,
   onRedo,
-  onBackMobile,
+  onBack,
   onUpdateEvent,
   onDuplicateEvent,
   onDeleteEvent,
@@ -111,19 +119,27 @@ export function EventDetail({
   onAddTable,
   onUpdateTable,
   onDeleteTable,
+  onAssignSubPrToTable,
+  onQuickCreateStaffMember,
 }: {
   event: FullEvent;
   summary: EventSummary;
   settings: AppSettings;
   promoters: Promoter[];
   venues: Venue[];
+  ownerPromoterId?: 'lollo' | 'ciccio';
+  staffGroupName?: string;
+  staffSummary?: StaffEventSummary;
+  staffMembers?: StaffMember[];
+  staffMemberUsageScore?: Map<string, number>;
+  staffTableByEventTableId?: Map<string, StaffEventTable>;
   canUndo: boolean;
   canRedo: boolean;
   lastUndoLabel: string | null;
   lastRedoLabel: string | null;
   onUndo: () => Promise<void>;
   onRedo: () => Promise<void>;
-  onBackMobile?: () => void;
+  onBack?: () => void;
   onUpdateEvent: (id: string, patch: Partial<EventRecord>) => Promise<void>;
   onDuplicateEvent: (ev: FullEvent) => Promise<void>;
   onDeleteEvent: (id: string) => Promise<void>;
@@ -166,6 +182,12 @@ export function EventDetail({
   ) => Promise<EventTable | null>;
   onUpdateTable: (eventId: string, tableId: string, patch: Partial<EventTable>) => Promise<void>;
   onDeleteTable: (eventId: string, tableId: string) => Promise<void>;
+  onAssignSubPrToTable?: (
+    eventTableId: string,
+    staffMemberId: string | null,
+    promoterName: string
+  ) => Promise<void>;
+  onQuickCreateStaffMember?: (fullName: string) => Promise<StaffMember | null>;
 }) {
   const [showFormula, setShowFormula] = useState(false);
   const [showSurcharge, setShowSurcharge] = useState(
@@ -262,6 +284,21 @@ export function EventDetail({
     setNewTableExtraSi(0);
   };
 
+  const [newTableSubPrId, setNewTableSubPrId] = useState<string>('');
+  const prioritizedStaffIds = useMemo(
+    () =>
+      (staffSummary?.membersRollup || [])
+        .map((r) => r.member?.id)
+        .filter((id): id is string => Boolean(id)),
+    [staffSummary]
+  );
+
+  const ownerOwnBusta = ownerPromoterId
+    ? summary.byPromoter[ownerPromoterId]?.bustaTotal ?? 0
+    : 0;
+  const ownerStaffBusta = staffSummary?.totalBusta ?? 0;
+  const ownerNetAfterStaff = Math.round((ownerOwnBusta - ownerStaffBusta) * 100) / 100;
+
   const handleQuickAddTable = async (keepOpen = false) => {
     if (
       !newTableName.trim() &&
@@ -284,6 +321,17 @@ export function EventDetail({
       scarico_status: newTableScarico,
     });
     if (!created) return;
+    if (
+      ownerPromoterId &&
+      newTablePr === ownerPromoterId &&
+      newTableSubPrId &&
+      onAssignSubPrToTable
+    ) {
+      const m = staffMembers.find((x) => x.id === newTableSubPrId);
+      if (m) {
+        await onAssignSubPrToTable(created.id, m.id, m.nickname || m.full_name);
+      }
+    }
     resetNewTableForm();
     if (keepOpen) {
       toast.success(`Tavolo “${created.table_name}” aggiunto — inserisci il prossimo`);
@@ -415,19 +463,19 @@ export function EventDetail({
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1040px] px-4 sm:px-6 lg:px-8 pt-3 sm:pt-4 pb-36 lg:pb-12">
+    <div className="mx-auto w-full max-w-[1100px] px-4 sm:px-6 lg:px-8 pt-3 sm:pt-5 pb-36 lg:pb-12">
       {/* Top Action Bar */}
       <div className="flex flex-wrap items-center justify-between gap-2.5 mb-4">
         <div className="flex items-center gap-2 min-w-0">
-          {onBackMobile && (
+          {onBack && (
             <button
               type="button"
-              onClick={onBackMobile}
-              className="lg:hidden -ml-2 inline-flex items-center gap-0.5 rounded-[10px] px-2 py-1.5 text-[15px] font-medium apple-press cursor-pointer"
+              onClick={onBack}
+              className="-ml-1.5 inline-flex items-center gap-0.5 rounded-[10px] px-2.5 py-1.5 text-[14px] font-semibold apple-press cursor-pointer hover:bg-[var(--bg-hover)]"
               style={{ color: 'var(--accent)' }}
             >
-              <ChevronLeft className="h-5 w-5" aria-hidden="true" />
-              Serate
+              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+              Tutte le serate
             </button>
           )}
           <span
@@ -625,10 +673,24 @@ export function EventDetail({
             >
               {formatEur(summary.bustaTotal, true)}
             </div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+            {ownerPromoterId && (
+              <div
+                className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] font-semibold tabular-nums"
+              >
+                <span style={{ color: 'var(--accent)' }}>
+                  Tua {formatEur(ownerOwnBusta, true)}
+                </span>
+                {ownerStaffBusta > 0.01 && (
+                  <span style={{ color: 'var(--status-green)' }}>
+                    · Netto {formatEur(ownerNetAfterStaff, true)}
+                  </span>
+                )}
+              </div>
+            )}
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
               {summary.bonusAmount > 0 ? (
                 <span
-                  className="rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap"
+                  className="rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap"
                   style={{ backgroundColor: 'var(--status-green-bg)', color: 'var(--status-green)' }}
                 >
                   Bonus +{formatEur(summary.bonusAmount)}
@@ -1654,7 +1716,7 @@ export function EventDetail({
                   borderBottom: '0.5px solid var(--separator)',
                 }}
               >
-                <th className="py-3 pl-4 pr-2 font-medium w-[86px]">PR</th>
+                <th className="py-3 pl-4 pr-2 font-medium min-w-[156px]">PR / Staff</th>
                 <th className="py-3 px-2 font-medium min-w-[180px]">Nome tavolo</th>
                 <th className="py-3 px-1.5 text-right font-medium w-[72px]">Paganti</th>
                 <th className="py-3 px-1.5 text-right font-medium w-[80px]">Prezzo €</th>
@@ -1687,25 +1749,46 @@ export function EventDetail({
                 event.tables.map((t) => {
                   const tc = computeTable(t);
                   const meta = getPromoter(t.promoter_id);
+                  const linkedStaffTable =
+                    ownerPromoterId && t.promoter_id === ownerPromoterId
+                      ? staffTableByEventTableId?.get(t.id)
+                      : undefined;
                   return (
                     <tr key={t.id} className="group hover:bg-[var(--bg-hover)] transition-colors">
                       <td className="py-2 pl-4 pr-2">
-                        <button
-                          type="button"
-                          onClick={() => cycleTablePromoter(t)}
-                          title="Clicca per cambiare PR"
-                          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold apple-press cursor-pointer"
-                          style={{
-                            backgroundColor: `${meta.color}1A`,
-                            color: meta.color,
-                          }}
-                        >
-                          <span
-                            className="h-1.5 w-1.5 rounded-full"
-                            style={{ backgroundColor: meta.color }}
-                          />
-                          {meta.display_name}
-                        </button>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => cycleTablePromoter(t)}
+                            title="Clicca per cambiare PR (Lollo / Ciccio)"
+                            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold apple-press cursor-pointer"
+                            style={{
+                              backgroundColor: `${meta.color}1A`,
+                              color: meta.color,
+                            }}
+                          >
+                            <span
+                              className="h-1.5 w-1.5 rounded-full"
+                              style={{ backgroundColor: meta.color }}
+                            />
+                            {meta.display_name}
+                          </button>
+                          {linkedStaffTable && onAssignSubPrToTable && staffMembers.length > 0 && (
+                            <StaffMemberPickerButton
+                              members={staffMembers}
+                              selectedMemberId={linkedStaffTable.staff_member_id}
+                              fallbackName={linkedStaffTable.promoter_name}
+                              prioritizedIds={prioritizedStaffIds}
+                              usageScores={staffMemberUsageScore}
+                              variant="subtle"
+                              subtitle={`Sotto-PR ${staffGroupName || 'Staff'} per “${t.table_name}”`}
+                              onQuickCreate={onQuickCreateStaffMember}
+                              onSelect={(m) =>
+                                onAssignSubPrToTable(t.id, m.id, m.nickname || m.full_name)
+                              }
+                            />
+                          )}
+                        </div>
                       </td>
                       <td className="py-2 px-2">
                         <input
@@ -1945,6 +2028,10 @@ export function EventDetail({
             event.tables.map((t) => {
               const tc = computeTable(t);
               const meta = getPromoter(t.promoter_id);
+              const linkedStaffTable =
+                ownerPromoterId && t.promoter_id === ownerPromoterId
+                  ? staffTableByEventTableId?.get(t.id)
+                  : undefined;
               const hasExtras =
                 t.extra_no_scarico > 0 ||
                 t.extra_si_scarico > 0 ||
@@ -1954,9 +2041,9 @@ export function EventDetail({
 
               return (
                 <div key={t.id} className="apple-surface rounded-[16px] p-3.5 space-y-3">
-                  {/* Card Header: PR + Name + Credito + Delete */}
+                  {/* Card Header: PR + Sub-PR + Name + Credito + Delete */}
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap">
                       <button
                         type="button"
                         onClick={() => cycleTablePromoter(t)}
@@ -1965,6 +2052,21 @@ export function EventDetail({
                       >
                         {meta.display_name}
                       </button>
+                      {linkedStaffTable && onAssignSubPrToTable && staffMembers.length > 0 && (
+                        <StaffMemberPickerButton
+                          members={staffMembers}
+                          selectedMemberId={linkedStaffTable.staff_member_id}
+                          fallbackName={linkedStaffTable.promoter_name}
+                          prioritizedIds={prioritizedStaffIds}
+                          usageScores={staffMemberUsageScore}
+                          variant="subtle"
+                          subtitle={`Sotto-PR ${staffGroupName || 'Staff'} per “${t.table_name}”`}
+                          onQuickCreate={onQuickCreateStaffMember}
+                          onSelect={(m) =>
+                            onAssignSubPrToTable(t.id, m.id, m.nickname || m.full_name)
+                          }
+                        />
+                      )}
                       <input
                         type="text"
                         defaultValue={t.table_name}
@@ -2165,6 +2267,26 @@ export function EventDetail({
               options={selectablePrs.map((p) => ({ value: p.id, label: p.display_name }))}
             />
           </div>
+
+          {ownerPromoterId && newTablePr === ownerPromoterId && staffMembers.length > 0 && (
+            <div>
+              <span
+                className="block text-[13px] font-medium mb-1.5"
+                style={{ color: 'var(--ink-secondary)' }}
+              >
+                Sotto-PR {staffGroupName || 'Staff'} (collegato automaticamente)
+              </span>
+              <StaffMemberPicker
+                members={staffMembers}
+                selectedMemberId={newTableSubPrId || null}
+                prioritizedIds={prioritizedStaffIds}
+                usageScores={staffMemberUsageScore}
+                compact
+                onQuickCreate={onQuickCreateStaffMember}
+                onSelect={(m) => setNewTableSubPrId(m.id)}
+              />
+            </div>
+          )}
 
           <div>
             <label

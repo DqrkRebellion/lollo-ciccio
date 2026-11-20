@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
+import { round2 } from '../lib/calculations';
 import {
   computeStaffEventSummary,
   DEFAULT_PRESALE_TIERS,
   DEFAULT_TABLE_TIERS,
   matchStaffMemberByName,
 } from '../lib/staffCalculations';
-import type { UndoAction } from '../types';
+import type { ScaricoStatus, UndoAction } from '../types';
 import type {
+  StaffCashAllocation,
+  StaffCashPaymentMethod,
+  StaffCashTransaction,
   StaffCommissionPlan,
   StaffEventPresale,
   StaffEventSummary,
@@ -33,10 +37,35 @@ function normalizeTiers(raw: unknown, fallback: StaffTier[]): StaffTier[] {
   }));
 }
 
+function normalizeScarico(v: unknown): ScaricoStatus {
+  if (v === 'DA NON SCARICARE' || v === '-') return v;
+  return 'DA SCARICARE';
+}
+
+function normalizeMethod(v: unknown): StaffCashPaymentMethod {
+  if (v === 'card' || v === 'transfer' || v === 'other') return v;
+  return 'cash';
+}
+
+function normalizeAllocations(raw: unknown): StaffCashAllocation[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((x): x is Record<string, unknown> => Boolean(x && typeof x === 'object'))
+    .map(
+      (x): StaffCashAllocation => ({
+        type: x.type === 'table' ? 'table' : 'presale',
+        id: String(x.id ?? ''),
+        delta: toNum(x.delta, 0),
+      })
+    )
+    .filter((x) => x.id && Math.abs(x.delta) > 0.001);
+}
+
 export function useStaffData(
   isAuthenticated: boolean,
   ownerPromoterId: 'lollo' | 'ciccio',
-  pushUndo: (action: Omit<UndoAction, 'id'>) => void
+  pushUndo: (action: Omit<UndoAction, 'id'>) => void,
+  onLinkedTablesChanged?: () => void
 ) {
   const [loading, setLoading] = useState(true);
   const [group, setGroup] = useState<StaffGroup>({
@@ -50,6 +79,7 @@ export function useStaffData(
   const [members, setMembers] = useState<StaffMember[]>([]);
   const [presales, setPresales] = useState<StaffEventPresale[]>([]);
   const [tables, setTables] = useState<StaffEventTable[]>([]);
+  const [cashTransactions, setCashTransactions] = useState<StaffCashTransaction[]>([]);
 
   const presalesRef = useRef<StaffEventPresale[]>([]);
   presalesRef.current = presales;
@@ -57,13 +87,21 @@ export function useStaffData(
   tablesRef.current = tables;
   const membersRef = useRef<StaffMember[]>([]);
   membersRef.current = members;
+  const cashTxRef = useRef<StaffCashTransaction[]>([]);
+  cashTxRef.current = cashTransactions;
   const reloadTimerRef = useRef<number | null>(null);
+  const onLinkedTablesChangedRef = useRef(onLinkedTablesChanged);
+  onLinkedTablesChangedRef.current = onLinkedTablesChanged;
+
+  const notifyLinked = useCallback(() => {
+    onLinkedTablesChangedRef.current?.();
+  }, []);
 
   const fetchStaff = useCallback(
     async (silent = false) => {
       if (!silent) setLoading(true);
       try {
-        const [groupRes, plansRes, membersRes, preveRes, tavRes] = await Promise.all([
+        const [groupRes, plansRes, membersRes, preveRes, tavRes, cashRes] = await Promise.all([
           supabase
             .from('staff_groups')
             .select('*')
@@ -90,10 +128,21 @@ export function useStaffData(
             .select('*')
             .eq('owner_promoter_id', ownerPromoterId)
             .order('sort_order', { ascending: true }),
+          supabase
+            .from('staff_cash_transactions')
+            .select('*')
+            .eq('owner_promoter_id', ownerPromoterId)
+            .order('recorded_at', { ascending: false })
+            .limit(500),
         ]);
 
         const firstErr =
-          groupRes.error || plansRes.error || membersRes.error || preveRes.error || tavRes.error;
+          groupRes.error ||
+          plansRes.error ||
+          membersRes.error ||
+          preveRes.error ||
+          tavRes.error ||
+          cashRes.error;
         if (firstErr) throw firstErr;
 
         if (groupRes.data) {
@@ -172,6 +221,7 @@ export function useStaffData(
             id: String(t.id),
             owner_promoter_id: ownerPromoterId,
             event_id: String(t.event_id),
+            event_table_id: t.event_table_id ? String(t.event_table_id) : null,
             staff_member_id: t.staff_member_id ? String(t.staff_member_id) : null,
             promoter_name: String(t.promoter_name ?? ''),
             table_name: String(t.table_name ?? ''),
@@ -180,6 +230,8 @@ export function useStaffData(
             surcharge_payers_count: toNum(t.surcharge_payers_count, 0),
             surcharge_price: toNum(t.surcharge_price, 0),
             extra: toNum(t.extra, 0),
+            extra_no_scarico: toNum(t.extra_no_scarico, 0),
+            scarico_status: normalizeScarico(t.scarico_status),
             paid_cash: toNum(t.paid_cash, 0),
             busta_override:
               t.busta_override !== null && t.busta_override !== undefined
@@ -187,6 +239,21 @@ export function useStaffData(
                 : null,
             is_busta_paid: Boolean(t.is_busta_paid),
             sort_order: toNum(t.sort_order, 0),
+          }))
+        );
+
+        setCashTransactions(
+          (cashRes.data || []).map((tx) => ({
+            id: String(tx.id),
+            owner_promoter_id: ownerPromoterId,
+            event_id: String(tx.event_id),
+            staff_member_id: tx.staff_member_id ? String(tx.staff_member_id) : null,
+            promoter_name: String(tx.promoter_name ?? ''),
+            amount: toNum(tx.amount, 0),
+            payment_method: normalizeMethod(tx.payment_method),
+            note: String(tx.note ?? ''),
+            allocations: normalizeAllocations(tx.allocations),
+            recorded_at: String(tx.recorded_at ?? tx.created_at ?? new Date().toISOString()),
           }))
         );
       } catch (err) {
@@ -207,7 +274,7 @@ export function useStaffData(
 
     const scheduleReload = () => {
       if (reloadTimerRef.current) window.clearTimeout(reloadTimerRef.current);
-      reloadTimerRef.current = window.setTimeout(() => fetchStaff(true), 400);
+      reloadTimerRef.current = window.setTimeout(() => fetchStaff(true), 350);
     };
 
     const ch = supabase
@@ -233,6 +300,12 @@ export function useStaffData(
         { event: '*', schema: 'public', table: 'staff_event_tables' },
         scheduleReload
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'staff_cash_transactions' },
+        scheduleReload
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_tables' }, scheduleReload)
       .subscribe();
 
     return () => {
@@ -280,6 +353,31 @@ export function useStaffData(
       computeStaffEventSummary(eventId, [], [], members, plans, group),
     [summariesByEvent, members, plans, group]
   );
+
+  // Quick lookup: event_table_id -> StaffEventTable (for EventDetail sub-PR picker!)
+  const staffTableByEventTableId = useMemo(() => {
+    const m = new Map<string, StaffEventTable>();
+    for (const t of tables) {
+      if (t.event_table_id) m.set(t.event_table_id, t);
+    }
+    return m;
+  }, [tables]);
+
+  // Sub-PR frequency map for smart top-chips ordering in StaffMemberPicker
+  const memberUsageScore = useMemo(() => {
+    const scores = new Map<string, number>();
+    for (const t of tables) {
+      if (t.staff_member_id) {
+        scores.set(t.staff_member_id, (scores.get(t.staff_member_id) || 0) + 3);
+      }
+    }
+    for (const p of presales) {
+      if (p.staff_member_id) {
+        scores.set(p.staff_member_id, (scores.get(p.staff_member_id) || 0) + 1);
+      }
+    }
+    return scores;
+  }, [tables, presales]);
 
   // --- Staff Group & Plans & Members CRUD ---
 
@@ -351,18 +449,15 @@ export function useStaffData(
     [ownerPromoterId, fetchStaff]
   );
 
-  const deletePlan = useCallback(
-    async (planId: string) => {
-      const { error } = await supabase.from('staff_commission_plans').delete().eq('id', planId);
-      if (error) {
-        toast.error('Impossibile eliminare il piano');
-      } else {
-        setPlans((prev) => prev.filter((p) => p.id !== planId));
-        toast.success('Piano eliminato');
-      }
-    },
-    []
-  );
+  const deletePlan = useCallback(async (planId: string) => {
+    const { error } = await supabase.from('staff_commission_plans').delete().eq('id', planId);
+    if (error) {
+      toast.error('Impossibile eliminare il piano');
+    } else {
+      setPlans((prev) => prev.filter((p) => p.id !== planId));
+      toast.success('Piano eliminato');
+    }
+  }, []);
 
   const upsertMember = useCallback(
     async (member: Partial<StaffMember> & { full_name: string }): Promise<StaffMember | null> => {
@@ -419,7 +514,7 @@ export function useStaffData(
     [ownerPromoterId, plans, fetchStaff]
   );
 
-  // --- Raw Presale / Table DB helpers (for Undo/Redo) ---
+  // --- Raw Presale / Table / Cash Tx DB helpers (for Undo/Redo) ---
 
   const insertPresaleRaw = useCallback(
     async (row: Omit<StaffEventPresale, 'id'> & { id?: string }): Promise<StaffEventPresale> => {
@@ -476,11 +571,16 @@ export function useStaffData(
   }, []);
 
   const insertTableRaw = useCallback(
-    async (row: Omit<StaffEventTable, 'id'> & { id?: string }): Promise<StaffEventTable> => {
+    async (
+      row: Omit<StaffEventTable, 'id'> & { id?: string }
+    ): Promise<StaffEventTable> => {
       const tempId = row.id || `temp-st-${Date.now()}`;
       setTables((prev) => [...prev, { ...row, id: tempId }]);
       const payload: Record<string, unknown> = { ...row };
       if (tempId.startsWith('temp-')) delete payload.id;
+      // When recreating via Undo, let DB BEFORE INSERT trigger recreate linked event_table cleanly
+      if (!payload.event_table_id) delete payload.event_table_id;
+
       const { data, error } = await supabase
         .from('staff_event_tables')
         .insert(payload)
@@ -494,6 +594,7 @@ export function useStaffData(
         id: String(data.id),
         owner_promoter_id: ownerPromoterId,
         event_id: String(data.event_id),
+        event_table_id: data.event_table_id ? String(data.event_table_id) : null,
         staff_member_id: data.staff_member_id ? String(data.staff_member_id) : null,
         promoter_name: String(data.promoter_name ?? ''),
         table_name: String(data.table_name ?? ''),
@@ -502,6 +603,8 @@ export function useStaffData(
         surcharge_payers_count: toNum(data.surcharge_payers_count, 0),
         surcharge_price: toNum(data.surcharge_price, 0),
         extra: toNum(data.extra, 0),
+        extra_no_scarico: toNum(data.extra_no_scarico, 0),
+        scarico_status: normalizeScarico(data.scarico_status),
         paid_cash: toNum(data.paid_cash, 0),
         busta_override:
           data.busta_override !== null && data.busta_override !== undefined
@@ -511,24 +614,153 @@ export function useStaffData(
         sort_order: toNum(data.sort_order, 0),
       };
       setTables((prev) => prev.map((t) => (t.id === tempId ? saved : t)));
+      notifyLinked();
+      return saved;
+    },
+    [ownerPromoterId, notifyLinked]
+  );
+
+  const updateTableRaw = useCallback(
+    async (id: string, patch: Partial<StaffEventTable>) => {
+      setTables((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+      if (id.startsWith('temp-')) return;
+      const { error } = await supabase.from('staff_event_tables').update(patch).eq('id', id);
+      if (error) throw error;
+      const touchesSyncedField =
+        patch.table_name !== undefined ||
+        patch.payers_count !== undefined ||
+        patch.price !== undefined ||
+        patch.surcharge_payers_count !== undefined ||
+        patch.surcharge_price !== undefined ||
+        patch.extra !== undefined ||
+        patch.extra_no_scarico !== undefined ||
+        patch.scarico_status !== undefined;
+      if (touchesSyncedField) notifyLinked();
+    },
+    [notifyLinked]
+  );
+
+  const deleteTableRaw = useCallback(
+    async (id: string) => {
+      setTables((prev) => prev.filter((t) => t.id !== id));
+      if (id.startsWith('temp-')) return;
+      const { error } = await supabase.from('staff_event_tables').delete().eq('id', id);
+      if (error) throw error;
+      notifyLinked();
+    },
+    [notifyLinked]
+  );
+
+  const insertCashTxRaw = useCallback(
+    async (
+      tx: Omit<StaffCashTransaction, 'id' | 'recorded_at'> & {
+        id?: string;
+        recorded_at?: string;
+      }
+    ): Promise<StaffCashTransaction> => {
+      const recordedAt = tx.recorded_at || new Date().toISOString();
+      const tempId = tx.id || `temp-tx-${Date.now()}`;
+      const optimistic: StaffCashTransaction = {
+        ...tx,
+        id: tempId,
+        recorded_at: recordedAt,
+      };
+      setCashTransactions((prev) => [optimistic, ...prev]);
+
+      const payload: Record<string, unknown> = {
+        owner_promoter_id: tx.owner_promoter_id,
+        event_id: tx.event_id,
+        staff_member_id: tx.staff_member_id,
+        promoter_name: tx.promoter_name,
+        amount: tx.amount,
+        payment_method: tx.payment_method,
+        note: tx.note,
+        allocations: tx.allocations,
+        recorded_at: recordedAt,
+      };
+      if (tx.id && !tx.id.startsWith('temp-')) payload.id = tx.id;
+
+      const { data, error } = await supabase
+        .from('staff_cash_transactions')
+        .insert(payload)
+        .select()
+        .single();
+      if (error) {
+        setCashTransactions((prev) => prev.filter((x) => x.id !== tempId));
+        throw error;
+      }
+      const saved: StaffCashTransaction = {
+        id: String(data.id),
+        owner_promoter_id: ownerPromoterId,
+        event_id: String(data.event_id),
+        staff_member_id: data.staff_member_id ? String(data.staff_member_id) : null,
+        promoter_name: String(data.promoter_name ?? ''),
+        amount: toNum(data.amount, 0),
+        payment_method: normalizeMethod(data.payment_method),
+        note: String(data.note ?? ''),
+        allocations: normalizeAllocations(data.allocations),
+        recorded_at: String(data.recorded_at ?? recordedAt),
+      };
+      setCashTransactions((prev) => prev.map((x) => (x.id === tempId ? saved : x)));
       return saved;
     },
     [ownerPromoterId]
   );
 
-  const updateTableRaw = useCallback(async (id: string, patch: Partial<StaffEventTable>) => {
-    setTables((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
+  const deleteCashTxRaw = useCallback(async (id: string) => {
+    setCashTransactions((prev) => prev.filter((x) => x.id !== id));
     if (id.startsWith('temp-')) return;
-    const { error } = await supabase.from('staff_event_tables').update(patch).eq('id', id);
+    const { error } = await supabase.from('staff_cash_transactions').delete().eq('id', id);
     if (error) throw error;
   }, []);
 
-  const deleteTableRaw = useCallback(async (id: string) => {
-    setTables((prev) => prev.filter((t) => t.id !== id));
-    if (id.startsWith('temp-')) return;
-    const { error } = await supabase.from('staff_event_tables').delete().eq('id', id);
-    if (error) throw error;
-  }, []);
+  const applyAllocationsDelta = useCallback(
+    async (allocations: StaffCashAllocation[], sign: 1 | -1) => {
+      for (const a of allocations) {
+        if (a.type === 'presale') {
+          const cur = presalesRef.current.find((p) => p.id === a.id);
+          if (!cur) continue;
+          const nextPaid = round2(Math.max(0, cur.paid_cash + sign * a.delta));
+          await updatePresaleRaw(a.id, { paid_cash: nextPaid });
+        } else {
+          const cur = tablesRef.current.find((t) => t.id === a.id);
+          if (!cur) continue;
+          const nextPaid = round2(Math.max(0, cur.paid_cash + sign * a.delta));
+          await updateTableRaw(a.id, { paid_cash: nextPaid });
+        }
+      }
+    },
+    [updatePresaleRaw, updateTableRaw]
+  );
+
+  // Assign a sub-PR to a linked table created/edited from shared Serate tab
+  const assignSubPrToEventTable = useCallback(
+    async (eventTableId: string, staffMemberId: string | null, promoterName: string) => {
+      // Find locally or query DB (in case Realtime hasn't arrived yet after insert)
+      const local = tablesRef.current.find((t) => t.event_table_id === eventTableId);
+      if (local) {
+        await updateTableRaw(local.id, {
+          staff_member_id: staffMemberId,
+          promoter_name: promoterName,
+        });
+        return;
+      }
+      const { error } = await supabase
+        .from('staff_event_tables')
+        .update({
+          staff_member_id: staffMemberId,
+          promoter_name: promoterName,
+        })
+        .eq('owner_promoter_id', ownerPromoterId)
+        .eq('event_table_id', eventTableId);
+      if (error) {
+        console.error('assignSubPrToEventTable failed:', error);
+      } else {
+        await fetchStaff(true);
+      }
+    },
+    [ownerPromoterId, updateTableRaw, fetchStaff]
+  );
 
   // --- Undo-Tracked Staff Event Mutations ---
 
@@ -635,6 +867,8 @@ export function useStaffData(
         surcharge_payers_count?: number;
         surcharge_price?: number;
         extra?: number;
+        extra_no_scarico?: number;
+        scarico_status?: ScaricoStatus;
         paid_cash?: number;
       }
     ) => {
@@ -644,6 +878,7 @@ export function useStaffData(
         const saved = await insertTableRaw({
           owner_promoter_id: ownerPromoterId,
           event_id: eventId,
+          event_table_id: null,
           staff_member_id: input.staff_member_id,
           promoter_name: input.promoter_name,
           table_name: input.table_name,
@@ -652,16 +887,20 @@ export function useStaffData(
           surcharge_payers_count: input.surcharge_payers_count ?? 0,
           surcharge_price: input.surcharge_price ?? 0,
           extra: input.extra ?? 0,
+          extra_no_scarico: input.extra_no_scarico ?? 0,
+          scarico_status: input.scarico_status ?? 'DA SCARICARE',
           paid_cash: input.paid_cash ?? 0,
           busta_override: null,
           is_busta_paid: false,
           sort_order: nextOrder,
         });
+        let currentId = saved.id;
         pushUndo({
-          label: `Tavolo staff “${saved.table_name}”`,
-          undo: () => deleteTableRaw(saved.id),
+          label: `Tavolo “${saved.table_name}”`,
+          undo: () => deleteTableRaw(currentId),
           redo: async () => {
-            await insertTableRaw(saved);
+            const recreated = await insertTableRaw({ ...saved, id: undefined, event_table_id: null });
+            currentId = recreated.id;
           },
         });
         return saved;
@@ -702,12 +941,18 @@ export function useStaffData(
       if (!snap) return;
       try {
         await deleteTableRaw(id);
+        let restoredId = snap.id;
         pushUndo({
           label: `Rimozione tavolo “${snap.table_name}”`,
           undo: async () => {
-            await insertTableRaw(snap);
+            const recreated = await insertTableRaw({
+              ...snap,
+              id: undefined,
+              event_table_id: null,
+            });
+            restoredId = recreated.id;
           },
-          redo: () => deleteTableRaw(snap.id),
+          redo: () => deleteTableRaw(restoredId),
         });
       } catch {
         toast.error('Errore eliminazione tavolo staff');
@@ -717,51 +962,241 @@ export function useStaffData(
     [deleteTableRaw, insertTableRaw, pushUndo, fetchStaff]
   );
 
-  // 1-tap atomic cash settlement for a sub-PR across both presales + tables
+  // --- Live Cash Collection ("Raccolta Soldi") + History ---
+
+  const recordCashPayment = useCallback(
+    async (input: {
+      eventId: string;
+      staffMemberId: string | null;
+      promoterName: string;
+      amount: number;
+      paymentMethod?: StaffCashPaymentMethod;
+      note?: string;
+    }): Promise<StaffCashTransaction | null> => {
+      const amt = round2(input.amount);
+      if (!Number.isFinite(amt) || Math.abs(amt) < 0.01) return null;
+
+      const summary = getEventSummary(input.eventId);
+      const rollup = summary.membersRollup.find(
+        (r) =>
+          (input.staffMemberId && r.member?.id === input.staffMemberId) ||
+          r.displayName.toLowerCase() === input.promoterName.trim().toLowerCase() ||
+          r.fullName.toLowerCase() === input.promoterName.trim().toLowerCase()
+      );
+
+      const allocations: StaffCashAllocation[] = [];
+      let remaining = amt;
+      let createdPlaceholderPresaleId: string | null = null;
+
+      if (rollup) {
+        if (remaining > 0) {
+          // 1. Allocate to open presales first
+          for (const cp of rollup.presaleRows) {
+            if (remaining <= 0.005) break;
+            if (cp.mancanti > 0.005) {
+              const take = round2(Math.min(remaining, cp.mancanti));
+              allocations.push({ type: 'presale', id: cp.row.id, delta: take });
+              remaining = round2(remaining - take);
+            }
+          }
+          // 2. Allocate to open DA SCARICARE tables
+          for (const ct of rollup.tableRows) {
+            if (remaining <= 0.005) break;
+            if (ct.mancanti > 0.005) {
+              const take = round2(Math.min(remaining, ct.mancanti));
+              allocations.push({ type: 'table', id: ct.row.id, delta: take });
+              remaining = round2(remaining - take);
+            }
+          }
+          // 3. Any overpayment / advance goes onto first presale or first DA SCARICARE table
+          if (remaining > 0.005) {
+            if (rollup.presaleRows.length > 0) {
+              const id = rollup.presaleRows[0].row.id;
+              const existing = allocations.find((a) => a.type === 'presale' && a.id === id);
+              if (existing) existing.delta = round2(existing.delta + remaining);
+              else allocations.push({ type: 'presale', id, delta: remaining });
+            } else if (rollup.tableRows.length > 0) {
+              const id = rollup.tableRows[0].row.id;
+              const existing = allocations.find((a) => a.type === 'table' && a.id === id);
+              if (existing) existing.delta = round2(existing.delta + remaining);
+              else allocations.push({ type: 'table', id, delta: remaining });
+            }
+          }
+        } else {
+          // Negative correction / refund: deduct from rows with paid_cash > 0
+          let toDeduct = Math.abs(remaining);
+          for (const ct of [...rollup.tableRows].reverse()) {
+            if (toDeduct <= 0.005) break;
+            if (ct.row.paid_cash > 0.005) {
+              const take = round2(Math.min(toDeduct, ct.row.paid_cash));
+              allocations.push({ type: 'table', id: ct.row.id, delta: -take });
+              toDeduct = round2(toDeduct - take);
+            }
+          }
+          for (const cp of [...rollup.presaleRows].reverse()) {
+            if (toDeduct <= 0.005) break;
+            if (cp.row.paid_cash > 0.005) {
+              const take = round2(Math.min(toDeduct, cp.row.paid_cash));
+              allocations.push({ type: 'presale', id: cp.row.id, delta: -take });
+              toDeduct = round2(toDeduct - take);
+            }
+          }
+        }
+      } else {
+        // Sub-PR wasn't in this event yet — create a 0-qty presale row to hold the collected cash
+        const existingForEv = presalesRef.current.filter((p) => p.event_id === input.eventId);
+        const nextOrder = Math.max(-1, ...existingForEv.map((p) => p.sort_order)) + 1;
+        const created = await insertPresaleRaw({
+          owner_promoter_id: ownerPromoterId,
+          event_id: input.eventId,
+          staff_member_id: input.staffMemberId,
+          promoter_name: input.promoterName,
+          quantity: 0,
+          revenue: 0,
+          scarico: 0,
+          note_amount: 0,
+          note_text: '',
+          paid_cash: 0,
+          busta_override: null,
+          is_busta_paid: false,
+          sort_order: nextOrder,
+        });
+        createdPlaceholderPresaleId = created.id;
+        allocations.push({ type: 'presale', id: created.id, delta: amt });
+      }
+
+      try {
+        await applyAllocationsDelta(allocations, 1);
+        const savedTx = await insertCashTxRaw({
+          owner_promoter_id: ownerPromoterId,
+          event_id: input.eventId,
+          staff_member_id: rollup?.member?.id ?? input.staffMemberId,
+          promoter_name: rollup?.displayName || input.promoterName,
+          amount: amt,
+          payment_method: input.paymentMethod ?? 'cash',
+          note: (input.note ?? '').trim(),
+          allocations,
+        });
+
+        pushUndo({
+          label: `${amt >= 0 ? '+' : ''}${amt} € da ${savedTx.promoter_name}`,
+          undo: async () => {
+            await applyAllocationsDelta(allocations, -1);
+            await deleteCashTxRaw(savedTx.id);
+            if (createdPlaceholderPresaleId) {
+              await deletePresaleRaw(createdPlaceholderPresaleId);
+            }
+          },
+          redo: async () => {
+            await applyAllocationsDelta(allocations, 1);
+            await insertCashTxRaw(savedTx);
+          },
+        });
+
+        return savedTx;
+      } catch (err) {
+        console.error(err);
+        toast.error('Errore registrazione incasso');
+        fetchStaff(true);
+        return null;
+      }
+    },
+    [
+      ownerPromoterId,
+      getEventSummary,
+      insertPresaleRaw,
+      deletePresaleRaw,
+      applyAllocationsDelta,
+      insertCashTxRaw,
+      deleteCashTxRaw,
+      pushUndo,
+      fetchStaff,
+    ]
+  );
+
+  const deleteCashTransaction = useCallback(
+    async (txId: string) => {
+      const snap = cashTxRef.current.find((x) => x.id === txId);
+      if (!snap) return;
+      try {
+        await applyAllocationsDelta(snap.allocations, -1);
+        await deleteCashTxRaw(snap.id);
+        pushUndo({
+          label: `Annulla incasso ${snap.promoter_name}`,
+          undo: async () => {
+            await applyAllocationsDelta(snap.allocations, 1);
+            await insertCashTxRaw(snap);
+          },
+          redo: async () => {
+            await applyAllocationsDelta(snap.allocations, -1);
+            await deleteCashTxRaw(snap.id);
+          },
+        });
+        toast.success(`Movimento di ${snap.promoter_name} rimosso`);
+      } catch (err) {
+        console.error(err);
+        toast.error('Errore rimozione movimento');
+        fetchStaff(true);
+      }
+    },
+    [applyAllocationsDelta, deleteCashTxRaw, insertCashTxRaw, pushUndo, fetchStaff]
+  );
+
+  // 1-tap atomic cash settlement for a sub-PR across both presales + DA SCARICARE tables (logs to history!)
   const settleMemberCash = useCallback(
-    async (rollup: StaffMemberEventRollup) => {
-      const pReverts: { id: string; prev: number; next: number }[] = [];
-      const tReverts: { id: string; prev: number; next: number }[] = [];
+    async (rollup: StaffMemberEventRollup, note = 'Saldo rapido') => {
+      const allocations: StaffCashAllocation[] = [];
+      let totalDelta = 0;
 
       for (const cp of rollup.presaleRows) {
-        const target = Math.max(
-          0,
-          Math.round((cp.row.scarico + cp.row.note_amount) * 100) / 100
-        );
-        if (Math.abs(cp.row.paid_cash - target) >= 0.01) {
-          pReverts.push({ id: cp.row.id, prev: cp.row.paid_cash, next: target });
+        const target = Math.max(0, round2(cp.row.scarico + cp.row.note_amount));
+        const delta = round2(target - cp.row.paid_cash);
+        if (Math.abs(delta) >= 0.01) {
+          allocations.push({ type: 'presale', id: cp.row.id, delta });
+          totalDelta = round2(totalDelta + delta);
         }
       }
       for (const ct of rollup.tableRows) {
-        const target = Math.max(0, ct.credito);
-        if (Math.abs(ct.row.paid_cash - target) >= 0.01) {
-          tReverts.push({ id: ct.row.id, prev: ct.row.paid_cash, next: target });
+        const target = Math.max(0, ct.scaricoApplied);
+        const delta = round2(target - ct.row.paid_cash);
+        if (Math.abs(delta) >= 0.01) {
+          allocations.push({ type: 'table', id: ct.row.id, delta });
+          totalDelta = round2(totalDelta + delta);
         }
       }
-      if (pReverts.length === 0 && tReverts.length === 0) return;
+      if (allocations.length === 0) return;
 
-      const applyForward = async () => {
-        await Promise.all([
-          ...pReverts.map((x) => updatePresaleRaw(x.id, { paid_cash: x.next })),
-          ...tReverts.map((x) => updateTableRaw(x.id, { paid_cash: x.next })),
-        ]);
-      };
-      const applyBackward = async () => {
-        await Promise.all([
-          ...pReverts.map((x) => updatePresaleRaw(x.id, { paid_cash: x.prev })),
-          ...tReverts.map((x) => updateTableRaw(x.id, { paid_cash: x.prev })),
-        ]);
-      };
+      const eventId = rollup.presaleRows[0]?.row.event_id || rollup.tableRows[0]?.row.event_id;
 
-      await applyForward();
+      await applyAllocationsDelta(allocations, 1);
+      let savedTx: StaffCashTransaction | null = null;
+      if (eventId && Math.abs(totalDelta) >= 0.01) {
+        savedTx = await insertCashTxRaw({
+          owner_promoter_id: ownerPromoterId,
+          event_id: eventId,
+          staff_member_id: rollup.member?.id ?? null,
+          promoter_name: rollup.displayName,
+          amount: totalDelta,
+          payment_method: 'cash',
+          note,
+          allocations,
+        });
+      }
+
       pushUndo({
         label: `Salda cassa ${rollup.displayName}`,
-        undo: applyBackward,
-        redo: applyForward,
+        undo: async () => {
+          await applyAllocationsDelta(allocations, -1);
+          if (savedTx) await deleteCashTxRaw(savedTx.id);
+        },
+        redo: async () => {
+          await applyAllocationsDelta(allocations, 1);
+          if (savedTx) await insertCashTxRaw(savedTx);
+        },
       });
       toast.success(`Cassa di ${rollup.displayName} saldata`);
     },
-    [updatePresaleRaw, updateTableRaw, pushUndo]
+    [ownerPromoterId, applyAllocationsDelta, insertCashTxRaw, deleteCashTxRaw, pushUndo]
   );
 
   // 1-tap atomic Busta Paid toggle for a sub-PR across both presales + tables
@@ -824,7 +1259,9 @@ export function useStaffData(
             .from('staff_members')
             .insert({
               owner_promoter_id: ownerPromoterId,
-              full_name: isSelf ? `Io (${ownerPromoterId === 'ciccio' ? 'Ciccio' : 'Lollo'})` : r.promoterName.trim(),
+              full_name: isSelf
+                ? `Io (${ownerPromoterId === 'ciccio' ? 'Ciccio' : 'Lollo'})`
+                : r.promoterName.trim(),
               nickname: r.promoterName.trim().split(' ')[0],
               aliases: [r.promoterName.trim().toLowerCase()],
               plan_id: isSelf ? null : defaultPlan?.id || null,
@@ -894,7 +1331,10 @@ export function useStaffData(
     members,
     presales,
     tables,
+    cashTransactions,
     summariesByEvent,
+    staffTableByEventTableId,
+    memberUsageScore,
     getEventSummary,
     fetchStaff,
     updateGroup,
@@ -907,8 +1347,11 @@ export function useStaffData(
     addStaffTable,
     updateStaffTable,
     deleteStaffTable,
+    assignSubPrToEventTable,
     settleMemberCash,
     toggleMemberBustaPaid,
+    recordCashPayment,
+    deleteCashTransaction,
     importTicketSmsPresales,
   };
 }

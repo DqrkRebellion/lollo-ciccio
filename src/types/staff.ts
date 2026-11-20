@@ -1,3 +1,5 @@
+import type { ScaricoStatus } from './index';
+
 export interface StaffTier {
   min: number;
   inclusive: boolean; // true: >= min (tavoli), false: > min (prevendite)
@@ -58,6 +60,7 @@ export interface StaffEventTable {
   id: string;
   owner_promoter_id: 'lollo' | 'ciccio';
   event_id: string;
+  event_table_id: string | null; // bidirectional link to public.event_tables(id)
   staff_member_id: string | null;
   promoter_name: string;
   table_name: string;
@@ -65,11 +68,34 @@ export interface StaffEventTable {
   price: number;
   surcharge_payers_count: number;
   surcharge_price: number;
-  extra: number;
+  extra: number; // synced with event_tables.extra_si_scarico
+  extra_no_scarico: number; // synced with event_tables.extra_no_scarico
+  scarico_status: ScaricoStatus; // DA SCARICARE | DA NON SCARICARE | -
   paid_cash: number;
   busta_override: number | null;
   is_busta_paid: boolean;
   sort_order: number;
+}
+
+export type StaffCashPaymentMethod = 'cash' | 'card' | 'transfer' | 'other';
+
+export interface StaffCashAllocation {
+  type: 'presale' | 'table';
+  id: string;
+  delta: number;
+}
+
+export interface StaffCashTransaction {
+  id: string;
+  owner_promoter_id: 'lollo' | 'ciccio';
+  event_id: string;
+  staff_member_id: string | null;
+  promoter_name: string;
+  amount: number;
+  payment_method: StaffCashPaymentMethod;
+  note: string;
+  allocations: StaffCashAllocation[];
+  recorded_at: string;
 }
 
 export interface ComputedStaffPresale {
@@ -91,6 +117,8 @@ export interface ComputedStaffTable {
   planName: string;
   px: number;
   credito: number;
+  scaricoBase: number;
+  scaricoApplied: number;
   mancanti: number;
   combinedMemberCredit: number;
   combinedMemberTablesCount: number;
@@ -119,6 +147,7 @@ export interface StaffMemberEventRollup {
   presalesRateApplied: number;
   tablesCount: number;
   tablesCredito: number;
+  tablesScarico: number;
   tablesPaidCash: number;
   tablesMancanti: number;
   tablesBusta: number;
@@ -141,6 +170,7 @@ export interface StaffEventSummary {
   pxTotal: number;
   presalesRevenue: number;
   tablesCredito: number;
+  tablesScarico: number;
   totalScarico: number;
   totalPaidCash: number;
   totalMancanti: number;

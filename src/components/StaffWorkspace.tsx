@@ -112,7 +112,7 @@ function TierListEditor({
                 aria-label="Operatore soglia"
                 value={tier.inclusive ? 'gte' : 'gt'}
                 onChange={(e) => updateRow(idx, { inclusive: e.target.value === 'gte' })}
-                className="apple-input rounded-[8px] px-2 py-1.5 text-[14px] font-semibold cursor-pointer"
+                className="apple-input rounded-[8px] px-2 py-1.5 text-[16px] md:text-[14px] font-semibold cursor-pointer"
               >
                 <option value="gt">&gt;</option>
                 <option value="gte">≥</option>
@@ -198,6 +198,7 @@ export function StaffWorkspace({
   onUndo,
   onRedo,
   onOpenNewEvent,
+  onOpenCashCollection,
   onSyncPresalesToMain,
 }: {
   events: FullEvent[];
@@ -207,7 +208,7 @@ export function StaffWorkspace({
   venues: Venue[];
   quickTablePrices: number[];
   selectedEventId: string | null;
-  onSelectEvent: (id: string) => void;
+  onSelectEvent: (id: string | null) => void;
   canUndo: boolean;
   canRedo: boolean;
   lastUndoLabel: string | null;
@@ -215,6 +216,7 @@ export function StaffWorkspace({
   onUndo: () => Promise<void>;
   onRedo: () => Promise<void>;
   onOpenNewEvent: () => void;
+  onOpenCashCollection: (eventId: string) => void;
   onSyncPresalesToMain: (
     eventId: string,
     quantity: number,
@@ -225,7 +227,6 @@ export function StaffWorkspace({
   const [section, setSection] = useState<WorkspaceSection>('events');
   const [search, setSearch] = useState('');
   const [listFilter, setListFilter] = useState<EventListFilter>('ALL');
-  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
 
   // Ledger state
   const [ledgerMode, setLedgerMode] = useState<LedgerMode>('by_pr');
@@ -320,18 +321,11 @@ export function StaffWorkspace({
     return groups;
   }, [filteredEvents]);
 
-  // Default to selectedEventId or first event that has staff data or first event overall
-  const activeEvent = useMemo(() => {
-    if (selectedEventId) {
-      const found = events.find((e) => e.id === selectedEventId);
-      if (found) return found;
-    }
-    const firstWithStaff = events.find((e) => {
-      const ss = staffData.summariesByEvent.get(e.id);
-      return ss && (ss.presales.length > 0 || ss.tables.length > 0);
-    });
-    return firstWithStaff || filteredEvents[0] || events[0] || null;
-  }, [selectedEventId, events, filteredEvents, staffData.summariesByEvent]);
+  // Open focused detail ONLY when an event is explicitly selected (zero distracting side list!)
+  const activeEvent = useMemo(
+    () => (selectedEventId ? events.find((e) => e.id === selectedEventId) || null : null),
+    [selectedEventId, events]
+  );
 
   const activeStaffSummary = activeEvent ? staffData.getEventSummary(activeEvent.id) : null;
   const activeMainSummary = activeEvent ? mainSummaries.get(activeEvent.id) : undefined;
@@ -611,12 +605,6 @@ export function StaffWorkspace({
   const jumpToEvent = (eventId: string) => {
     onSelectEvent(eventId);
     setSection('events');
-    setMobileDetailOpen(true);
-  };
-
-  const handleSelectEvent = (id: string) => {
-    onSelectEvent(id);
-    setMobileDetailOpen(true);
   };
 
   const openPendingCount =
@@ -671,8 +659,10 @@ export function StaffWorkspace({
           size="sm"
           value={section}
           onChange={(v) => {
+            if (v === 'events' && section === 'events' && selectedEventId) {
+              onSelectEvent(null);
+            }
             setSection(v);
-            if (v !== 'events') setMobileDetailOpen(false);
           }}
           options={[
             { value: 'events', label: 'Serate' },
@@ -685,39 +675,56 @@ export function StaffWorkspace({
         />
       </div>
 
-      {/* SECTION 1: SERATE (Shared Events Master-Detail + Staff Event Detail) */}
-      {section === 'events' && (
-        <div className="flex flex-1 min-h-0">
-          {/* Master Event List */}
-          <aside
-            className={`${
-              mobileDetailOpen ? 'hidden lg:flex' : 'flex'
-            } w-full lg:w-[328px] xl:w-[350px] shrink-0 flex-col lg:h-[calc(100dvh-57px)] lg:sticky lg:top-[57px]`}
-            style={{
-              borderRight: '0.5px solid var(--separator)',
-              backgroundColor: 'var(--bg-canvas)',
-            }}
-          >
-            <div className="px-4 pt-3.5 pb-3 space-y-2.5 shrink-0">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-                  Stesse serate del team · {filteredEvents.length} visibili
-                </p>
-                <button
-                  type="button"
-                  onClick={onOpenNewEvent}
-                  className="inline-flex items-center gap-1 rounded-[8px] px-2.5 py-1 text-[12px] font-semibold apple-press cursor-pointer"
-                  style={{
-                    backgroundColor: 'var(--accent-subtle)',
-                    color: 'var(--accent)',
-                  }}
-                >
-                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                  Nuova serata
-                </button>
-              </div>
-
-              <div className="relative">
+      {/* SECTION 1: SERATE (Focused Full-Screen Event OR Clean Full-Width Directory) */}
+      {section === 'events' &&
+        (activeEvent && activeStaffSummary ? (
+          <div className="flex-1 min-w-0">
+            <StaffEventDetail
+              key={activeEvent.id}
+              event={activeEvent}
+              mainSummary={activeMainSummary}
+              ownerPromoterId={ownerPromoterId}
+              staffGroup={staffData.group}
+              staffSummary={activeStaffSummary}
+              members={staffData.members}
+              plans={staffData.plans}
+              memberUsageScore={staffData.memberUsageScore}
+              quickTablePrices={quickTablePrices}
+              canUndo={canUndo}
+              canRedo={canRedo}
+              lastUndoLabel={lastUndoLabel}
+              lastRedoLabel={lastRedoLabel}
+              onUndo={onUndo}
+              onRedo={onRedo}
+              onBack={() => onSelectEvent(null)}
+              onOpenCashCollection={() => onOpenCashCollection(activeEvent.id)}
+              onSyncPresalesToMain={(qty, rev, oto) =>
+                onSyncPresalesToMain(activeEvent.id, qty, rev, oto)
+              }
+              onAddPresale={staffData.addStaffPresale}
+              onUpdatePresale={staffData.updateStaffPresale}
+              onDeletePresale={staffData.deleteStaffPresale}
+              onAddTable={staffData.addStaffTable}
+              onUpdateTable={staffData.updateStaffTable}
+              onDeleteTable={staffData.deleteStaffTable}
+              onSettleMemberCash={staffData.settleMemberCash}
+              onToggleMemberBustaPaid={staffData.toggleMemberBustaPaid}
+              onImportTicketSms={staffData.importTicketSmsPresales}
+              onAssignMemberPlan={async (member, planId) => {
+                await staffData.upsertMember({
+                  ...member,
+                  plan_id: planId,
+                  custom_presale_tiers: null,
+                  custom_table_tiers: null,
+                });
+              }}
+              onQuickCreateMember={(fullName) => staffData.upsertMember({ full_name: fullName })}
+            />
+          </div>
+        ) : (
+          <div className="max-w-[1040px] w-full mx-auto px-4 sm:px-6 lg:px-8 pt-5 pb-28 lg:pb-12 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="relative flex-1 sm:max-w-[360px]">
                 <Search
                   className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4"
                   style={{ color: 'var(--ink-tertiary)' }}
@@ -729,7 +736,7 @@ export function StaffWorkspace({
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Cerca serata, locale o sotto-PR…"
                   aria-label="Filtra serate staff"
-                  className="apple-input w-full rounded-[10px] pl-9 pr-8 py-2 text-[16px] md:text-[14px]"
+                  className="apple-input w-full rounded-[11px] pl-9 pr-8 py-2 text-[16px] md:text-[14px]"
                 />
                 {search && (
                   <button
@@ -759,7 +766,7 @@ export function StaffWorkspace({
                       key={f.id}
                       type="button"
                       onClick={() => setListFilter(f.id)}
-                      className="rounded-[8px] px-2.5 py-1 text-[12px] font-medium shrink-0 apple-press cursor-pointer transition-colors"
+                      className="rounded-[9px] px-3 py-1.5 text-[12px] font-medium shrink-0 apple-press cursor-pointer transition-colors"
                       style={{
                         backgroundColor: active
                           ? f.id === 'OPEN_MANCANTI'
@@ -777,66 +784,70 @@ export function StaffWorkspace({
                     </button>
                   );
                 })}
+                <button
+                  type="button"
+                  onClick={onOpenNewEvent}
+                  className="inline-flex items-center gap-1 rounded-[9px] px-3 py-1.5 text-[12px] font-semibold text-white apple-press cursor-pointer"
+                  style={{ backgroundColor: 'var(--accent)' }}
+                >
+                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                  Nuova serata
+                </button>
               </div>
             </div>
 
-            {/* Event List */}
-            <div className="flex-1 overflow-y-auto px-3 pb-24 lg:pb-6 space-y-4">
-              {groupedByMonth.length === 0 ? (
-                <div className="px-4 py-12 text-center">
-                  <CalendarDays
-                    className="h-8 w-8 mx-auto mb-2"
-                    style={{ color: 'var(--ink-tertiary)' }}
-                    aria-hidden="true"
-                  />
-                  <p className="text-[14px] font-medium">Nessuna serata trovata</p>
-                  <p className="mt-1 text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
-                    Cambia filtro o seleziona “Tutte” per iniziare una serata staff.
-                  </p>
-                </div>
-              ) : (
-                groupedByMonth.map((grp) => (
-                  <div key={grp.monthLabel}>
-                    <div
-                      className="px-2 pb-1.5 text-[12px] font-semibold sticky top-0 z-10 backdrop-blur-md"
-                      style={{
-                        color: 'var(--ink-secondary)',
-                        backgroundColor: 'color-mix(in srgb, var(--bg-canvas) 86%, transparent)',
-                      }}
+            {groupedByMonth.length === 0 ? (
+              <div className="apple-card p-12 text-center">
+                <CalendarDays
+                  className="h-9 w-9 mx-auto mb-2.5"
+                  style={{ color: 'var(--ink-tertiary)' }}
+                  aria-hidden="true"
+                />
+                <p className="text-[16px] font-semibold">Nessuna serata trovata</p>
+                <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-secondary)' }}>
+                  Cambia filtro o seleziona “Tutte” per aprire una serata staff.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {groupedByMonth.map((grp) => (
+                  <section key={grp.monthLabel} className="space-y-2.5">
+                    <h2
+                      className="px-1 text-[13px] font-semibold"
+                      style={{ color: 'var(--ink-secondary)' }}
                     >
                       {grp.monthLabel}
-                    </div>
-                    <div className="space-y-1">
+                    </h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {grp.items.map((ev) => {
                         const ss = staffData.summariesByEvent.get(ev.id);
+                        const ms = mainSummaries.get(ev.id);
                         const hasData = Boolean(
                           ss && (ss.presales.length > 0 || ss.tables.length > 0)
                         );
-                        const isSelected = activeEvent?.id === ev.id;
                         const venueColor = venueColorMap.get(ev.venue_name) || '#0071E3';
                         const hasMancanti = (ss?.totalMancanti ?? 0) > 0.01;
                         const hasUnpaidBusta = (ss?.totalBustaUnpaid ?? 0) > 0.01;
+                        const ownerBusta = ms?.byPromoter[ownerPromoterId]?.bustaTotal ?? 0;
+                        const staffBusta = ss?.totalBusta ?? 0;
+                        const ownerNet = Math.round((ownerBusta - staffBusta) * 100) / 100;
 
                         return (
                           <button
                             key={ev.id}
                             type="button"
-                            onClick={() => handleSelectEvent(ev.id)}
-                            className="w-full rounded-[12px] px-3 py-2.5 text-left transition-colors apple-press cursor-pointer"
-                            style={{
-                              backgroundColor: isSelected ? 'var(--bg-surface)' : 'transparent',
-                              boxShadow: isSelected ? 'var(--shadow-card)' : 'none',
-                              opacity: hasData || isSelected ? 1 : 0.72,
-                            }}
+                            onClick={() => onSelectEvent(ev.id)}
+                            className="apple-card p-4 text-left apple-press cursor-pointer hover:ring-1 hover:ring-[var(--accent)] transition-[box-shadow,transform]"
+                            style={{ opacity: hasData ? 1 : 0.76 }}
                           >
-                            <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-2">
                                   <span
-                                    className="h-2 w-2 rounded-full shrink-0"
+                                    className="h-2.5 w-2.5 rounded-full shrink-0"
                                     style={{ backgroundColor: venueColor }}
                                   />
-                                  <span className="text-[14px] font-semibold truncate">
+                                  <span className="text-[16px] font-semibold truncate">
                                     {ev.title}
                                   </span>
                                 </div>
@@ -849,26 +860,37 @@ export function StaffWorkspace({
                                   </span>
                                   <span>·</span>
                                   <span className="truncate">{ev.venue_name}</span>
+                                  {hasData && ss && (
+                                    <>
+                                      <span>·</span>
+                                      <span className="tabular-nums">
+                                        {ss.membersRollup.length} PR · {ss.tables.length} tav.
+                                      </span>
+                                    </>
+                                  )}
                                 </div>
                               </div>
 
                               <div className="text-right shrink-0 tabular-nums">
                                 {hasData && ss ? (
                                   <>
-                                    <div className="text-[13px] font-semibold">
+                                    <div className="text-[15px] font-bold">
                                       {formatInt(ss.pxTotal)} px
                                     </div>
                                     <div
                                       className="text-[11px]"
                                       style={{ color: 'var(--ink-secondary)' }}
                                     >
-                                      Buste {formatEur(ss.totalBusta)}
+                                      Staff {formatEur(staffBusta, true)}
                                     </div>
                                   </>
                                 ) : (
                                   <span
-                                    className="text-[11px]"
-                                    style={{ color: 'var(--ink-tertiary)' }}
+                                    className="rounded-full px-2 py-0.5 text-[11px] font-medium"
+                                    style={{
+                                      backgroundColor: 'var(--bg-surface-secondary)',
+                                      color: 'var(--ink-tertiary)',
+                                    }}
                                   >
                                     Vuota
                                   </span>
@@ -876,24 +898,43 @@ export function StaffWorkspace({
                               </div>
                             </div>
 
-                            {hasData && ss && (
-                              <div className="mt-2 flex items-center justify-between gap-2 text-[11px] tabular-nums">
-                                <span style={{ color: 'var(--ink-tertiary)' }}>
-                                  {ss.membersRollup.length} PR · {ss.tables.length} tav.
+                            <div
+                              className="mt-3 pt-2.5 flex flex-wrap items-center justify-between gap-2 text-[12px] tabular-nums"
+                              style={{ borderTop: '0.5px solid var(--separator)' }}
+                            >
+                              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+                                <span className="font-semibold" style={{ color: 'var(--accent)' }}>
+                                  Tua busta {formatEur(ownerBusta, true)}
                                 </span>
+                                {hasData && (
+                                  <span
+                                    className="font-semibold"
+                                    style={{
+                                      color:
+                                        ownerNet >= 0
+                                          ? 'var(--status-green)'
+                                          : 'var(--status-red)',
+                                    }}
+                                  >
+                                    Netto {formatEur(ownerNet, true)}
+                                  </span>
+                                )}
+                              </div>
+
+                              {hasData && ss && (
                                 <div className="flex items-center gap-1.5">
                                   {!hasMancanti && !hasUnpaidBusta && (
                                     <span
-                                      className="inline-flex items-center gap-0.5 font-medium"
+                                      className="inline-flex items-center gap-0.5 text-[11px] font-semibold"
                                       style={{ color: 'var(--status-green)' }}
                                     >
-                                      <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                                      <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
                                       Chiusa
                                     </span>
                                   )}
                                   {hasUnpaidBusta && (
                                     <span
-                                      className="rounded-full px-1.5 py-0.5 font-semibold"
+                                      className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
                                       style={{
                                         backgroundColor: 'var(--accent-subtle)',
                                         color: 'var(--accent)',
@@ -904,7 +945,7 @@ export function StaffWorkspace({
                                   )}
                                   {hasMancanti && (
                                     <span
-                                      className="rounded-full px-1.5 py-0.5 font-semibold"
+                                      className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
                                       style={{
                                         backgroundColor: 'var(--status-red-bg)',
                                         color: 'var(--status-red)',
@@ -914,84 +955,18 @@ export function StaffWorkspace({
                                     </span>
                                   )}
                                 </div>
-                              </div>
-                            )}
+                              )}
+                            </div>
                           </button>
                         );
                       })}
                     </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </aside>
-
-          {/* Right Staff Event Detail Pane */}
-          <div
-            className={`${
-              mobileDetailOpen ? 'block' : 'hidden lg:block'
-            } flex-1 min-w-0 overflow-y-auto`}
-          >
-            {activeEvent && activeStaffSummary ? (
-              <StaffEventDetail
-                key={activeEvent.id}
-                event={activeEvent}
-                mainSummary={activeMainSummary}
-                ownerPromoterId={ownerPromoterId}
-                staffGroup={staffData.group}
-                staffSummary={activeStaffSummary}
-                members={staffData.members}
-                plans={staffData.plans}
-                quickTablePrices={quickTablePrices}
-                canUndo={canUndo}
-                canRedo={canRedo}
-                lastUndoLabel={lastUndoLabel}
-                lastRedoLabel={lastRedoLabel}
-                onUndo={onUndo}
-                onRedo={onRedo}
-                onBackMobile={() => setMobileDetailOpen(false)}
-                onSyncPresalesToMain={(qty, rev, oto) =>
-                  onSyncPresalesToMain(activeEvent.id, qty, rev, oto)
-                }
-                onAddPresale={staffData.addStaffPresale}
-                onUpdatePresale={staffData.updateStaffPresale}
-                onDeletePresale={staffData.deleteStaffPresale}
-                onAddTable={staffData.addStaffTable}
-                onUpdateTable={staffData.updateStaffTable}
-                onDeleteTable={staffData.deleteStaffTable}
-                onSettleMemberCash={staffData.settleMemberCash}
-                onToggleMemberBustaPaid={staffData.toggleMemberBustaPaid}
-                onImportTicketSms={staffData.importTicketSmsPresales}
-                onAssignMemberPlan={async (member, planId) => {
-                  await staffData.upsertMember({
-                    ...member,
-                    plan_id: planId,
-                    custom_presale_tiers: null,
-                    custom_table_tiers: null,
-                  });
-                }}
-                onQuickCreateMember={(fullName) => staffData.upsertMember({ full_name: fullName })}
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
-                <Users
-                  className="h-10 w-10 mb-3"
-                  style={{ color: 'var(--ink-tertiary)' }}
-                  aria-hidden="true"
-                />
-                <h2 className="text-[20px] font-semibold">Nessuna serata disponibile</h2>
-                <p
-                  className="mt-1 text-[14px] max-w-sm"
-                  style={{ color: 'var(--ink-secondary)' }}
-                >
-                  Crea prima una serata nel calendario condiviso per iniziare a gestire il tuo
-                  staff {staffData.group.name}.
-                </p>
+                  </section>
+                ))}
               </div>
             )}
           </div>
-        </div>
-      )}
+        ))}
 
       {/* SECTION 2: SALDI & BUSTE STAFF (Cross-Event Ledger) */}
       {section === 'ledger' && (
@@ -1899,7 +1874,7 @@ export function StaffWorkspace({
                               custom_table_tiers: null,
                             });
                           }}
-                          className="apple-input rounded-[8px] px-2.5 py-1.5 text-[12px] font-medium cursor-pointer max-w-[165px]"
+                          className="apple-input rounded-[8px] px-2.5 py-1.5 text-[16px] md:text-[12px] font-medium cursor-pointer max-w-[165px]"
                         >
                           {hasCustomTiers && <option value="__CUSTOM__">Personalizzato</option>}
                           {staffData.plans.map((p) => (

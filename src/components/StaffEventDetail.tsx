@@ -1,12 +1,14 @@
 import { useMemo, useRef, useState } from 'react';
 import {
   ArrowUpRight,
+  Banknote,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronUp,
   FileSpreadsheet,
   Layers,
+  Link2,
   Plus,
   Redo2,
   Share2,
@@ -22,9 +24,10 @@ import {
   NumericCellInput,
   SegmentedControl,
 } from './ui/AppleControls';
+import { StaffMemberPicker, StaffMemberPickerButton } from './ui/StaffMemberPicker';
 import { parseStaffTicketSmsReport } from '../lib/staffCalculations';
 import { formatDateFull, formatEur, formatInt, formatPercent } from '../lib/format';
-import type { EventSummary, FullEvent } from '../types';
+import type { EventSummary, FullEvent, ScaricoStatus } from '../types';
 import type {
   StaffCommissionPlan,
   StaffEventPresale,
@@ -37,6 +40,39 @@ import type {
 
 type StaffSubView = 'rollup' | 'presales' | 'tables';
 const QUICK_PAYERS = [5, 8, 10, 12, 15, 20];
+const SCARICO_CYCLE: ScaricoStatus[] = ['DA SCARICARE', 'DA NON SCARICARE'];
+
+function nextStaffScarico(cur: ScaricoStatus): ScaricoStatus {
+  return cur === 'DA SCARICARE' ? 'DA NON SCARICARE' : SCARICO_CYCLE[0];
+}
+
+function StaffScaricoPill({
+  status,
+  onClick,
+}: {
+  status: ScaricoStatus;
+  onClick: () => void;
+}) {
+  const isScarico = status === 'DA SCARICARE';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={
+        isScarico
+          ? 'Da scaricare: il PR deve consegnarti i soldi (clicca per passare a No scarico)'
+          : 'No scarico: il PR non deve scaricarti nulla (sincronizzato con Lollo & Ciccio)'
+      }
+      className="rounded-full px-2.5 py-1 text-[11px] font-semibold apple-press cursor-pointer whitespace-nowrap transition-colors"
+      style={{
+        backgroundColor: isScarico ? 'var(--accent-subtle)' : 'var(--bg-surface-secondary)',
+        color: isScarico ? 'var(--accent)' : 'var(--ink-secondary)',
+      }}
+    >
+      {isScarico ? 'Da scaricare' : 'No scarico'}
+    </button>
+  );
+}
 
 export function StaffEventDetail({
   event,
@@ -46,6 +82,7 @@ export function StaffEventDetail({
   staffSummary,
   members,
   plans,
+  memberUsageScore,
   quickTablePrices,
   canUndo,
   canRedo,
@@ -53,7 +90,8 @@ export function StaffEventDetail({
   lastRedoLabel,
   onUndo,
   onRedo,
-  onBackMobile,
+  onBack,
+  onOpenCashCollection,
   onSyncPresalesToMain,
   onAddPresale,
   onUpdatePresale,
@@ -74,6 +112,7 @@ export function StaffEventDetail({
   staffSummary: StaffEventSummary;
   members: StaffMember[];
   plans: StaffCommissionPlan[];
+  memberUsageScore: Map<string, number>;
   quickTablePrices: number[];
   canUndo: boolean;
   canRedo: boolean;
@@ -81,7 +120,8 @@ export function StaffEventDetail({
   lastRedoLabel: string | null;
   onUndo: () => Promise<void>;
   onRedo: () => Promise<void>;
-  onBackMobile?: () => void;
+  onBack?: () => void;
+  onOpenCashCollection?: () => void;
   onSyncPresalesToMain: (quantity: number, revenue: number, oneToOne: number) => Promise<void>;
   onAddPresale: (
     eventId: string,
@@ -108,6 +148,8 @@ export function StaffEventDetail({
       surcharge_payers_count?: number;
       surcharge_price?: number;
       extra?: number;
+      extra_no_scarico?: number;
+      scarico_status?: ScaricoStatus;
       paid_cash?: number;
     }
   ) => Promise<StaffEventTable | null>;
@@ -130,7 +172,6 @@ export function StaffEventDetail({
   // Add Presale modal
   const [showAddPresaleModal, setShowAddPresaleModal] = useState(false);
   const [newPreveMemberId, setNewPreveMemberId] = useState<string>('');
-  const [newPreveCustomName, setNewPreveCustomName] = useState('');
   const [newPreveQty, setNewPreveQty] = useState(0);
   const [newPreveRev, setNewPreveRev] = useState(0);
   const [newPreveScarico, setNewPreveScarico] = useState(0);
@@ -138,11 +179,12 @@ export function StaffEventDetail({
   // Add Table modal
   const [showAddTableModal, setShowAddTableModal] = useState(false);
   const [newTblMemberId, setNewTblMemberId] = useState<string>('');
-  const [newTblCustomName, setNewTblCustomName] = useState('');
   const [newTblName, setNewTblName] = useState('');
   const [newTblPayers, setNewTblPayers] = useState(0);
   const [newTblPrice, setNewTblPrice] = useState(quickTablePrices[1] || 30);
+  const [newTblScarico, setNewTblScarico] = useState<ScaricoStatus>('DA SCARICARE');
   const [newTblExtra, setNewTblExtra] = useState(0);
+  const [newTblExtraNo, setNewTblExtraNo] = useState(0);
   const [newTblSovPayers, setNewTblSovPayers] = useState(0);
   const [newTblSovPrice, setNewTblSovPrice] = useState(0);
   const [showModalSov, setShowModalSov] = useState(false);
@@ -154,15 +196,25 @@ export function StaffEventDetail({
   const [expandedTableCards, setExpandedTableCards] = useState<Record<string, boolean>>({});
   const modalTblNameRef = useRef<HTMLInputElement>(null);
 
-  const activeMembers = useMemo(
+  const prioritizedMemberIds = useMemo(
     () =>
-      members
-        .filter((m) => m.is_active)
-        .sort((a, b) => a.full_name.localeCompare(b.full_name)),
-    [members]
+      staffSummary.membersRollup
+        .map((r) => r.member?.id)
+        .filter((id): id is string => Boolean(id)),
+    [staffSummary.membersRollup]
   );
 
-  const ownerMainBusta = mainSummary?.byPromoter[ownerPromoterId]?.bustaTotal ?? 0;
+  const defaultMemberId = useMemo(
+    () =>
+      prioritizedMemberIds[0] ||
+      members.find((m) => m.is_active && !m.is_self)?.id ||
+      members.find((m) => m.is_active)?.id ||
+      '',
+    [prioritizedMemberIds, members]
+  );
+
+  const ownerPrSummary = mainSummary?.byPromoter[ownerPromoterId];
+  const ownerMainBusta = ownerPrSummary?.bustaTotal ?? 0;
   const ownerNetMargin = Math.round((ownerMainBusta - staffSummary.totalBusta) * 100) / 100;
 
   const importPreview = useMemo(() => parseStaffTicketSmsReport(importText), [importText]);
@@ -180,87 +232,59 @@ export function StaffEventDetail({
   };
 
   const handleAddPresaleSubmit = async (keepOpen = false) => {
-    let memberId: string | null = newPreveMemberId || null;
-    let promoterName = '';
-
-    if (memberId === '__new__') {
-      if (!newPreveCustomName.trim()) {
-        toast.error('Inserisci il nome del sotto-PR');
-        return;
-      }
-      const created = await onQuickCreateMember(newPreveCustomName.trim());
-      memberId = created?.id || null;
-      promoterName = created?.full_name || newPreveCustomName.trim();
-    } else if (memberId) {
-      const m = members.find((x) => x.id === memberId);
-      promoterName = m?.full_name || 'PR';
-    } else if (newPreveCustomName.trim()) {
-      promoterName = newPreveCustomName.trim();
-    } else {
+    const m = members.find((x) => x.id === newPreveMemberId);
+    if (!m) {
       toast.error('Seleziona un sotto-PR');
       return;
     }
 
     await onAddPresale(event.id, {
-      staff_member_id: memberId,
-      promoter_name: promoterName,
+      staff_member_id: m.id,
+      promoter_name: m.full_name,
       quantity: newPreveQty,
       revenue: newPreveRev,
       scarico: newPreveScarico,
     });
-    setNewPreveCustomName('');
     setNewPreveQty(0);
     setNewPreveRev(0);
     setNewPreveScarico(0);
     if (!keepOpen) setShowAddPresaleModal(false);
-    toast.success(`Prevendite di ${promoterName} aggiunte`);
+    toast.success(`Prevendite di ${m.nickname || m.full_name} aggiunte`);
   };
 
   const handleAddTableSubmit = async (keepOpen = false) => {
-    let memberId: string | null = newTblMemberId || null;
-    let promoterName = '';
-
-    if (memberId === '__new__') {
-      if (!newTblCustomName.trim()) {
-        toast.error('Inserisci il nome del sotto-PR');
-        return;
-      }
-      const created = await onQuickCreateMember(newTblCustomName.trim());
-      memberId = created?.id || null;
-      promoterName = created?.nickname || created?.full_name || newTblCustomName.trim();
-    } else if (memberId) {
-      const m = members.find((x) => x.id === memberId);
-      promoterName = m?.nickname || m?.full_name || 'PR';
-    } else if (newTblCustomName.trim()) {
-      promoterName = newTblCustomName.trim();
-    } else {
+    const m = members.find((x) => x.id === newTblMemberId);
+    if (!m) {
       toast.error('Seleziona il sotto-PR del tavolo');
       return;
     }
 
     const created = await onAddTable(event.id, {
-      staff_member_id: memberId,
-      promoter_name: promoterName,
+      staff_member_id: m.id,
+      promoter_name: m.nickname || m.full_name,
       table_name: newTblName.trim() || 'Tavolo',
       payers_count: newTblPayers,
       price: newTblPrice,
       surcharge_payers_count: newTblSovPayers,
       surcharge_price: newTblSovPrice,
       extra: newTblExtra,
+      extra_no_scarico: newTblExtraNo,
+      scarico_status: newTblScarico,
     });
     if (!created) return;
 
     setNewTblName('');
     setNewTblPayers(0);
     setNewTblExtra(0);
+    setNewTblExtraNo(0);
     setNewTblSovPayers(0);
     setNewTblSovPrice(0);
     if (keepOpen) {
-      toast.success(`Tavolo “${created.table_name}” aggiunto — inserisci il prossimo`);
+      toast.success(`Tavolo “${created.table_name}” aggiunto (sincronizzato su Serata)`);
       window.setTimeout(() => modalTblNameRef.current?.focus(), 60);
     } else {
       setShowAddTableModal(false);
-      toast.success(`Tavolo “${created.table_name}” aggiunto`);
+      toast.success(`Tavolo “${created.table_name}” aggiunto (sincronizzato su Serata)`);
     }
   };
 
@@ -307,19 +331,19 @@ export function StaffEventDetail({
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1040px] px-4 sm:px-6 lg:px-8 pt-3 sm:pt-4 pb-36 lg:pb-12">
+    <div className="mx-auto w-full max-w-[1100px] px-4 sm:px-6 lg:px-8 pt-3 sm:pt-5 pb-36 lg:pb-12">
       {/* Top Action Bar */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <div className="flex items-center gap-2 min-w-0">
-          {onBackMobile && (
+          {onBack && (
             <button
               type="button"
-              onClick={onBackMobile}
-              className="lg:hidden -ml-2 inline-flex items-center gap-0.5 rounded-[10px] px-2 py-1.5 text-[15px] font-medium apple-press cursor-pointer"
+              onClick={onBack}
+              className="-ml-1.5 inline-flex items-center gap-0.5 rounded-[10px] px-2.5 py-1.5 text-[14px] font-semibold apple-press cursor-pointer hover:bg-[var(--bg-hover)]"
               style={{ color: 'var(--accent)' }}
             >
-              <ChevronLeft className="h-5 w-5" aria-hidden="true" />
-              {staffGroup.name}
+              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+              Serate {staffGroup.name}
             </button>
           )}
           <span
@@ -331,18 +355,9 @@ export function StaffEventDetail({
           >
             {event.venue_name}
           </span>
-          <span
-            className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-            style={{
-              backgroundColor: 'var(--accent-subtle)',
-              color: 'var(--accent)',
-            }}
-          >
-            Staff {staffGroup.name}
-          </span>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           {/* Undo / Redo */}
           <div
             className="inline-flex items-center rounded-[10px] p-0.5 apple-surface"
@@ -372,6 +387,28 @@ export function StaffEventDetail({
               <Redo2 className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           </div>
+
+          {onOpenCashCollection && (
+            <button
+              type="button"
+              onClick={onOpenCashCollection}
+              className="inline-flex items-center gap-1.5 rounded-[10px] px-2.5 sm:px-3 py-1.5 text-[12px] sm:text-[13px] font-semibold apple-press cursor-pointer"
+              style={{
+                backgroundColor:
+                  staffSummary.totalMancanti > 0.01
+                    ? 'var(--status-green-bg)'
+                    : 'var(--bg-surface)',
+                color:
+                  staffSummary.totalMancanti > 0.01
+                    ? 'var(--status-green)'
+                    : 'var(--ink-primary)',
+                boxShadow: staffSummary.totalMancanti > 0.01 ? 'none' : 'var(--shadow-card)',
+              }}
+            >
+              <Banknote className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Raccolta</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -410,7 +447,7 @@ export function StaffEventDetail({
 
       {/* Title */}
       <div className="mb-5">
-        <h1 className="text-[24px] sm:text-[30px] font-bold tracking-tight truncate">
+        <h1 className="text-[24px] sm:text-[32px] font-bold tracking-tight truncate">
           {event.title}
         </h1>
         <p className="mt-0.5 text-[13px] sm:text-[14px]" style={{ color: 'var(--ink-secondary)' }}>
@@ -418,14 +455,14 @@ export function StaffEventDetail({
         </p>
       </div>
 
-      {/* Hero Staff Financial Strip */}
+      {/* Hero Staff Financial Strip (5 KPIs: PX, Mancanti, Buste Staff, TUA BUSTA, TUO MARGINE NETTO) */}
       <section className="apple-surface rounded-[18px] overflow-hidden mb-5">
-        <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 divide-x divide-[var(--separator)]">
-          <div className="p-3.5 sm:p-5">
+        <div className="grid grid-cols-2 lg:grid-cols-5 divide-y lg:divide-y-0 divide-x divide-[var(--separator)]">
+          <div className="p-3.5 sm:p-4">
             <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Persone {staffGroup.name}
             </span>
-            <div className="mt-1 text-[24px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none">
+            <div className="mt-1 text-[22px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none">
               {formatInt(staffSummary.pxTotal)}
               <span className="ml-1 text-[13px] font-medium" style={{ color: 'var(--ink-tertiary)' }}>
                 px
@@ -436,7 +473,7 @@ export function StaffEventDetail({
             </div>
           </div>
 
-          <div className="p-3.5 sm:p-5">
+          <div className="p-3.5 sm:p-4">
             <div className="flex items-center justify-between gap-1.5">
               <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
                 Mancanti staff
@@ -460,15 +497,15 @@ export function StaffEventDetail({
             </div>
           </div>
 
-          <div className="p-3.5 sm:p-5">
+          <div className="p-3.5 sm:p-4">
             <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-              Buste da pagare
+              Buste staff
             </span>
-            <div className="mt-1 text-[24px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap">
+            <div className="mt-1 text-[22px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap">
               {formatEur(staffSummary.totalBusta, true)}
             </div>
             <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-              Pagate {formatEur(staffSummary.totalBustaPaid, true)} · Restano{' '}
+              Restano{' '}
               <strong
                 style={{
                   color:
@@ -482,12 +519,37 @@ export function StaffEventDetail({
             </div>
           </div>
 
-          <div className="p-3.5 sm:p-5">
+          <div className="p-3.5 sm:p-4">
+            <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+              Tua busta serata
+            </span>
+            <div
+              className="mt-1 text-[22px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap"
+              style={{ color: 'var(--accent)' }}
+            >
+              {formatEur(ownerMainBusta, true)}
+            </div>
+            <div className="mt-1.5 text-[11px] sm:text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+              {ownerPrSummary ? (
+                <>
+                  Preve {formatEur(ownerPrSummary.bustaPresales)} · Tav.{' '}
+                  {formatEur(ownerPrSummary.bustaTables)}
+                  {ownerPrSummary.bustaBonusShare > 0
+                    ? ` · +${formatEur(ownerPrSummary.bustaBonusShare)}`
+                    : ''}
+                </>
+              ) : (
+                'Dal foglio Lollo & Ciccio'
+              )}
+            </div>
+          </div>
+
+          <div className="p-3.5 sm:p-4 col-span-2 lg:col-span-1">
             <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Tuo margine netto
             </span>
             <div
-              className="mt-1 text-[24px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap"
+              className="mt-1 text-[22px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap"
               style={{
                 color: ownerNetMargin >= 0 ? 'var(--status-green)' : 'var(--status-red)',
               }}
@@ -495,7 +557,7 @@ export function StaffEventDetail({
               {formatEur(ownerNetMargin, true)}
             </div>
             <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-              Tua busta {formatEur(ownerMainBusta, true)} − Staff
+              Tua busta − Buste staff
             </div>
           </div>
         </div>
@@ -520,7 +582,7 @@ export function StaffEventDetail({
             <button
               type="button"
               onClick={() => {
-                setNewPreveMemberId(activeMembers[0]?.id || '__new__');
+                setNewPreveMemberId(defaultMemberId);
                 setShowAddPresaleModal(true);
               }}
               className="inline-flex items-center gap-1.5 rounded-[10px] px-3.5 py-1.5 text-[13px] font-semibold text-white apple-press cursor-pointer"
@@ -543,7 +605,8 @@ export function StaffEventDetail({
               <button
                 type="button"
                 onClick={() => {
-                  setNewTblMemberId(activeMembers[0]?.id || '__new__');
+                  setNewTblMemberId(defaultMemberId);
+                  setNewTblScarico('DA SCARICARE');
                   setShowModalSov(false);
                   setShowAddTableModal(true);
                 }}
@@ -583,7 +646,8 @@ export function StaffEventDetail({
                 <button
                   type="button"
                   onClick={() => {
-                    setNewTblMemberId(activeMembers[0]?.id || '__new__');
+                    setNewTblMemberId(defaultMemberId);
+                    setNewTblScarico('DA SCARICARE');
                     setShowAddTableModal(true);
                   }}
                   className="inline-flex items-center gap-1.5 rounded-[10px] px-4 py-2 text-[13px] font-semibold apple-surface apple-press cursor-pointer"
@@ -1035,9 +1099,24 @@ export function StaffEventDetail({
         </>
       )}
 
-      {/* ============ SUB-VIEW 3: TAVOLI STAFF (W..AH) ============ */}
+      {/* ============ SUB-VIEW 3: TAVOLI STAFF (W..AH, COLLEGATI A LOLLO & CICCIO) ============ */}
       {subView === 'tables' && (
         <>
+          <div
+            className="mb-3 flex items-center gap-2 rounded-[11px] px-3.5 py-2 text-[12px]"
+            style={{
+              backgroundColor: 'var(--bg-surface-secondary)',
+              color: 'var(--ink-secondary)',
+            }}
+          >
+            <Link2 className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--accent)' }} aria-hidden="true" />
+            <span>
+              Tavoli collegati a <strong>Lollo &amp; Ciccio</strong>: ogni modifica si aggiorna su
+              entrambe le viste; se un tavolo è <strong>No scarico</strong> il PR non deve
+              consegnarti contanti.
+            </span>
+          </div>
+
           {/* Mobile Tavoli Cards */}
           <div className="md:hidden space-y-2.5">
             {staffSummary.tables.length === 0 ? (
@@ -1048,7 +1127,8 @@ export function StaffEventDetail({
                 <button
                   type="button"
                   onClick={() => {
-                    setNewTblMemberId(activeMembers[0]?.id || '__new__');
+                    setNewTblMemberId(defaultMemberId);
+                    setNewTblScarico('DA SCARICARE');
                     setShowAddTableModal(true);
                   }}
                   className="inline-flex items-center gap-1.5 rounded-[10px] px-4 py-2 text-[14px] font-semibold text-white apple-press cursor-pointer"
@@ -1062,20 +1142,35 @@ export function StaffEventDetail({
               staffSummary.tables.map((ct) => {
                 const isExp = Boolean(expandedTableCards[ct.row.id]);
                 const combinedBonus = ct.combinedMemberTablesCount >= 2 && staffGroup.sum_tables_per_pr;
+                const isNoScarico = ct.row.scarico_status !== 'DA SCARICARE';
                 return (
                   <div key={ct.row.id} className="apple-surface rounded-[16px] p-3.5 space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span
-                            className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-                            style={{
-                              backgroundColor: 'var(--accent-subtle)',
-                              color: 'var(--accent)',
-                            }}
-                          >
-                            {ct.member?.nickname || ct.row.promoter_name}
-                          </span>
+                          <StaffMemberPickerButton
+                            members={members}
+                            selectedMemberId={ct.row.staff_member_id}
+                            fallbackName={ct.member?.nickname || ct.row.promoter_name}
+                            prioritizedIds={prioritizedMemberIds}
+                            usageScores={memberUsageScore}
+                            subtitle={`Tavolo “${ct.row.table_name}”`}
+                            onQuickCreate={onQuickCreateMember}
+                            onSelect={(m) =>
+                              onUpdateTable(ct.row.id, {
+                                staff_member_id: m.id,
+                                promoter_name: m.nickname || m.full_name,
+                              })
+                            }
+                          />
+                          <StaffScaricoPill
+                            status={ct.row.scarico_status}
+                            onClick={() =>
+                              onUpdateTable(ct.row.id, {
+                                scarico_status: nextStaffScarico(ct.row.scarico_status),
+                              })
+                            }
+                          />
                           {combinedBonus && (
                             <span
                               className="rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums"
@@ -1100,7 +1195,7 @@ export function StaffEventDetail({
                               onUpdateTable(ct.row.id, { table_name: v || 'Tavolo' });
                             }
                           }}
-                          className="mt-1 font-semibold text-[16px] bg-transparent w-full truncate"
+                          className="mt-1.5 font-semibold text-[16px] bg-transparent w-full truncate"
                         />
                       </div>
 
@@ -1159,15 +1254,25 @@ export function StaffEventDetail({
                     </div>
 
                     {isExp && (
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 gap-2">
                         <div>
                           <span className="block text-[10px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
-                            Extra (€)
+                            Extra Sì scar. (€)
                           </span>
                           <NumericCellInput
                             value={ct.row.extra}
                             onCommit={(v) => onUpdateTable(ct.row.id, { extra: v })}
-                            ariaLabel="Extra"
+                            ariaLabel="Extra sì scarico"
+                          />
+                        </div>
+                        <div>
+                          <span className="block text-[10px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                            Extra No scar. (€)
+                          </span>
+                          <NumericCellInput
+                            value={ct.row.extra_no_scarico}
+                            onCommit={(v) => onUpdateTable(ct.row.id, { extra_no_scarico: v })}
+                            ariaLabel="Extra no scarico"
                           />
                         </div>
                         <div>
@@ -1202,29 +1307,42 @@ export function StaffEventDetail({
                       style={{ borderTop: '0.5px solid var(--separator)' }}
                     >
                       <div className="flex items-center gap-1.5">
-                        <NumericCellInput
-                          value={ct.row.paid_cash}
-                          prefix="€"
-                          placeholder="Dati"
-                          onCommit={(v) => onUpdateTable(ct.row.id, { paid_cash: v })}
-                          ariaLabel="Soldi dati tavolo"
-                          className="w-[92px]"
-                        />
-                        {ct.mancanti > 0.01 ? (
-                          <button
-                            type="button"
-                            onClick={() => onUpdateTable(ct.row.id, { paid_cash: ct.credito })}
-                            className="inline-flex items-center gap-1 rounded-[8px] px-2.5 py-1.5 text-[12px] font-semibold apple-press cursor-pointer"
-                            style={{
-                              backgroundColor: 'var(--status-green-bg)',
-                              color: 'var(--status-green)',
-                            }}
+                        {isNoScarico ? (
+                          <span
+                            className="text-[12px] font-medium"
+                            style={{ color: 'var(--ink-secondary)' }}
                           >
-                            <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                            Salda
-                          </button>
+                            Nessuno scarico dovuto
+                          </span>
                         ) : (
-                          <MancantiBadge value={ct.mancanti} compact />
+                          <>
+                            <NumericCellInput
+                              value={ct.row.paid_cash}
+                              prefix="€"
+                              placeholder="Dati"
+                              onCommit={(v) => onUpdateTable(ct.row.id, { paid_cash: v })}
+                              ariaLabel="Soldi dati tavolo"
+                              className="w-[92px]"
+                            />
+                            {ct.mancanti > 0.01 ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onUpdateTable(ct.row.id, { paid_cash: ct.scaricoApplied })
+                                }
+                                className="inline-flex items-center gap-1 rounded-[8px] px-2.5 py-1.5 text-[12px] font-semibold apple-press cursor-pointer"
+                                style={{
+                                  backgroundColor: 'var(--status-green-bg)',
+                                  color: 'var(--status-green)',
+                                }}
+                              >
+                                <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                                Salda
+                              </button>
+                            ) : (
+                              <MancantiBadge value={ct.mancanti} compact />
+                            )}
+                          </>
                         )}
                       </div>
 
@@ -1251,7 +1369,7 @@ export function StaffEventDetail({
 
           {/* Desktop Tavoli Table */}
           <div className="hidden md:block apple-surface rounded-[16px] overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[840px]">
+            <table className="w-full text-left border-collapse min-w-[920px]">
               <thead>
                 <tr
                   className="text-[12px] font-medium"
@@ -1260,22 +1378,23 @@ export function StaffEventDetail({
                     borderBottom: '0.5px solid var(--separator)',
                   }}
                 >
-                  <th className="py-3 pl-4 pr-2 font-medium w-[135px]">Promoter</th>
-                  <th className="py-3 px-2 font-medium min-w-[155px]">Nome tavolo</th>
+                  <th className="py-3 pl-4 pr-2 font-medium w-[132px]">Promoter</th>
+                  <th className="py-3 px-2 font-medium min-w-[145px]">Nome tavolo</th>
                   <th className="py-3 px-1.5 text-right font-medium w-[66px]">Pag.</th>
-                  <th className="py-3 px-1.5 text-right font-medium w-[74px]">Prezzo €</th>
+                  <th className="py-3 px-1.5 text-right font-medium w-[78px]">Prezzo €</th>
                   {showDesktopSov && (
                     <>
                       <th className="py-3 px-1.5 text-right font-medium w-[66px]">Sovr.</th>
-                      <th className="py-3 px-1.5 text-right font-medium w-[74px]">Rial. €</th>
+                      <th className="py-3 px-1.5 text-right font-medium w-[78px]">Rial. €</th>
                     </>
                   )}
-                  <th className="py-3 px-1.5 text-right font-medium w-[74px]">Extra €</th>
+                  <th className="py-3 px-1.5 text-right font-medium w-[78px]">Extra €</th>
                   <th className="py-3 px-2 text-right font-medium w-[80px]">Credito</th>
-                  <th className="py-3 px-1.5 text-right font-medium w-[112px]">Dati €</th>
-                  <th className="py-3 px-2 text-right font-medium w-[82px]">Manc.</th>
-                  <th className="py-3 px-2 text-right font-medium w-[96px]">Busta</th>
-                  <th className="py-3 px-2 text-center font-medium w-[64px]">Pag.</th>
+                  <th className="py-3 px-2 text-center font-medium w-[104px]">Scarico</th>
+                  <th className="py-3 px-1.5 text-right font-medium w-[114px]">Dati €</th>
+                  <th className="py-3 px-2 text-right font-medium w-[84px]">Manc.</th>
+                  <th className="py-3 px-2 text-right font-medium w-[94px]">Busta</th>
+                  <th className="py-3 px-2 text-center font-medium w-[62px]">Pag.</th>
                   <th className="py-3 pr-3 w-[34px]" />
                 </tr>
               </thead>
@@ -1283,7 +1402,7 @@ export function StaffEventDetail({
                 {staffSummary.tables.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={showDesktopSov ? 13 : 11}
+                      colSpan={showDesktopSov ? 14 : 12}
                       className="py-10 text-center"
                       style={{ color: 'var(--ink-secondary)' }}
                     >
@@ -1294,30 +1413,25 @@ export function StaffEventDetail({
                   staffSummary.tables.map((ct) => {
                     const combinedBonus =
                       ct.combinedMemberTablesCount >= 2 && staffGroup.sum_tables_per_pr;
+                    const isNoScarico = ct.row.scarico_status !== 'DA SCARICARE';
                     return (
                       <tr key={ct.row.id} className="group hover:bg-[var(--bg-hover)]">
                         <td className="py-2 pl-4 pr-2">
-                          <select
-                            aria-label="Promoter tavolo"
-                            value={ct.row.staff_member_id || ''}
-                            onChange={(e) => {
-                              const m = members.find((x) => x.id === e.target.value);
+                          <StaffMemberPickerButton
+                            members={members}
+                            selectedMemberId={ct.row.staff_member_id}
+                            fallbackName={ct.member?.nickname || ct.row.promoter_name}
+                            prioritizedIds={prioritizedMemberIds}
+                            usageScores={memberUsageScore}
+                            subtitle={`Tavolo “${ct.row.table_name}”`}
+                            onQuickCreate={onQuickCreateMember}
+                            onSelect={(m) =>
                               onUpdateTable(ct.row.id, {
-                                staff_member_id: m?.id || null,
-                                promoter_name: m?.nickname || m?.full_name || ct.row.promoter_name,
-                              });
-                            }}
-                            className="apple-input w-full rounded-[8px] px-2 py-1.5 text-[12px] font-semibold"
-                          >
-                            {!ct.row.staff_member_id && (
-                              <option value="">{ct.row.promoter_name}</option>
-                            )}
-                            {activeMembers.map((m) => (
-                              <option key={m.id} value={m.id}>
-                                {m.nickname || m.full_name}
-                              </option>
-                            ))}
-                          </select>
+                                staff_member_id: m.id,
+                                promoter_name: m.nickname || m.full_name,
+                              })
+                            }
+                          />
                         </td>
                         <td className="py-2 px-2">
                           <input
@@ -1382,35 +1496,63 @@ export function StaffEventDetail({
                         <td className="py-2 px-2 text-right font-semibold tabular-nums whitespace-nowrap">
                           {formatEur(ct.credito)}
                         </td>
+                        <td className="py-2 px-2 text-center">
+                          <StaffScaricoPill
+                            status={ct.row.scarico_status}
+                            onClick={() =>
+                              onUpdateTable(ct.row.id, {
+                                scarico_status: nextStaffScarico(ct.row.scarico_status),
+                              })
+                            }
+                          />
+                        </td>
                         <td className="py-2 px-1.5">
-                          <div className="flex items-center gap-1">
-                            <NumericCellInput
-                              value={ct.row.paid_cash}
-                              onCommit={(v) => onUpdateTable(ct.row.id, { paid_cash: v })}
-                              ariaLabel="Dati"
-                              className="flex-1"
-                            />
-                            {ct.mancanti > 0.01 && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  onUpdateTable(ct.row.id, { paid_cash: ct.credito })
-                                }
-                                title="Segna tutto ricevuto"
-                                aria-label="Salda"
-                                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] apple-press cursor-pointer"
-                                style={{
-                                  backgroundColor: 'var(--status-green-bg)',
-                                  color: 'var(--status-green)',
-                                }}
-                              >
-                                <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                              </button>
-                            )}
-                          </div>
+                          {isNoScarico ? (
+                            <div
+                              className="text-right text-[12px] pr-2"
+                              style={{ color: 'var(--ink-tertiary)' }}
+                            >
+                              —
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <NumericCellInput
+                                value={ct.row.paid_cash}
+                                onCommit={(v) => onUpdateTable(ct.row.id, { paid_cash: v })}
+                                ariaLabel="Dati"
+                                className="flex-1"
+                              />
+                              {ct.mancanti > 0.01 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onUpdateTable(ct.row.id, { paid_cash: ct.scaricoApplied })
+                                  }
+                                  title="Segna tutto ricevuto"
+                                  aria-label="Salda"
+                                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] apple-press cursor-pointer"
+                                  style={{
+                                    backgroundColor: 'var(--status-green-bg)',
+                                    color: 'var(--status-green)',
+                                  }}
+                                >
+                                  <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="py-2 px-2 text-right">
-                          <MancantiBadge value={ct.mancanti} compact />
+                          {isNoScarico ? (
+                            <span
+                              className="text-[11px] font-medium whitespace-nowrap"
+                              style={{ color: 'var(--ink-tertiary)' }}
+                            >
+                              0 €
+                            </span>
+                          ) : (
+                            <MancantiBadge value={ct.mancanti} compact />
+                          )}
                         </td>
                         <td className="py-2 px-2 text-right tabular-nums whitespace-nowrap">
                           <div className="font-bold">{formatEur(ct.bustaFinal, true)}</div>
@@ -1457,10 +1599,11 @@ export function StaffEventDetail({
         type="button"
         onClick={() => {
           if (subView === 'presales') {
-            setNewPreveMemberId(activeMembers[0]?.id || '__new__');
+            setNewPreveMemberId(defaultMemberId);
             setShowAddPresaleModal(true);
           } else {
-            setNewTblMemberId(activeMembers[0]?.id || '__new__');
+            setNewTblMemberId(defaultMemberId);
+            setNewTblScarico('DA SCARICARE');
             setShowModalSov(false);
             setShowAddTableModal(true);
           }
@@ -1551,48 +1694,22 @@ export function StaffEventDetail({
           className="space-y-4"
         >
           <div>
-            <label
-              htmlFor="sp-member"
+            <span
               className="block text-[13px] font-medium mb-1.5"
               style={{ color: 'var(--ink-secondary)' }}
             >
               Sotto-PR
-            </label>
-            <select
-              id="sp-member"
-              value={newPreveMemberId}
-              onChange={(e) => setNewPreveMemberId(e.target.value)}
-              className="apple-input w-full rounded-[10px] px-3 py-2.5 text-[16px] md:text-[15px]"
-            >
-              {activeMembers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.full_name} {m.nickname && m.nickname !== m.full_name ? `(${m.nickname})` : ''}
-                </option>
-              ))}
-              <option value="__new__">+ Nuovo sotto-PR…</option>
-            </select>
+            </span>
+            <StaffMemberPicker
+              members={members}
+              selectedMemberId={newPreveMemberId || null}
+              prioritizedIds={prioritizedMemberIds}
+              usageScores={memberUsageScore}
+              compact
+              onQuickCreate={onQuickCreateMember}
+              onSelect={(m) => setNewPreveMemberId(m.id)}
+            />
           </div>
-
-          {newPreveMemberId === '__new__' && (
-            <div>
-              <label
-                htmlFor="sp-new-name"
-                className="block text-[13px] font-medium mb-1.5"
-                style={{ color: 'var(--ink-secondary)' }}
-              >
-                Nome e cognome nuovo sotto-PR
-              </label>
-              <input
-                id="sp-new-name"
-                type="text"
-                required
-                value={newPreveCustomName}
-                onChange={(e) => setNewPreveCustomName(e.target.value)}
-                placeholder="Es. Marco Rossi…"
-                className="apple-input w-full rounded-[10px] px-3 py-2.5 text-[16px] md:text-[15px]"
-              />
-            </div>
-          )}
 
           <div className="grid grid-cols-3 gap-2.5">
             <div>
@@ -1666,48 +1783,22 @@ export function StaffEventDetail({
           className="space-y-4"
         >
           <div>
-            <label
-              htmlFor="st-member"
+            <span
               className="block text-[13px] font-medium mb-1.5"
               style={{ color: 'var(--ink-secondary)' }}
             >
               Sotto-PR (tavoli dello stesso PR si sommano per gli scaglioni)
-            </label>
-            <select
-              id="st-member"
-              value={newTblMemberId}
-              onChange={(e) => setNewTblMemberId(e.target.value)}
-              className="apple-input w-full rounded-[10px] px-3 py-2.5 text-[16px] md:text-[15px]"
-            >
-              {activeMembers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.nickname ? `${m.nickname} (${m.full_name})` : m.full_name}
-                </option>
-              ))}
-              <option value="__new__">+ Nuovo sotto-PR…</option>
-            </select>
+            </span>
+            <StaffMemberPicker
+              members={members}
+              selectedMemberId={newTblMemberId || null}
+              prioritizedIds={prioritizedMemberIds}
+              usageScores={memberUsageScore}
+              compact
+              onQuickCreate={onQuickCreateMember}
+              onSelect={(m) => setNewTblMemberId(m.id)}
+            />
           </div>
-
-          {newTblMemberId === '__new__' && (
-            <div>
-              <label
-                htmlFor="st-new-name"
-                className="block text-[13px] font-medium mb-1.5"
-                style={{ color: 'var(--ink-secondary)' }}
-              >
-                Nome nuovo sotto-PR
-              </label>
-              <input
-                id="st-new-name"
-                type="text"
-                required
-                value={newTblCustomName}
-                onChange={(e) => setNewTblCustomName(e.target.value)}
-                placeholder="Es. Luca Bianchi…"
-                className="apple-input w-full rounded-[10px] px-3 py-2.5 text-[16px] md:text-[15px]"
-              />
-            </div>
-          )}
 
           <div>
             <label
@@ -1803,6 +1894,27 @@ export function StaffEventDetail({
             </div>
           </div>
 
+          {/* Stato scarico (sincronizzato con Lollo & Ciccio) */}
+          <div>
+            <span
+              className="block text-[13px] font-medium mb-1.5"
+              style={{ color: 'var(--ink-secondary)' }}
+            >
+              Stato scarico (collegato a Lollo &amp; Ciccio)
+            </span>
+            <SegmentedControl<ScaricoStatus>
+              ariaLabel="Stato scarico tavolo"
+              size="sm"
+              className="w-full"
+              value={newTblScarico}
+              onChange={setNewTblScarico}
+              options={[
+                { value: 'DA SCARICARE', label: 'Da scaricare' },
+                { value: 'DA NON SCARICARE', label: 'No scarico (PR 0 €)' },
+              ]}
+            />
+          </div>
+
           {/* Extra & Sovraprezzo collapsible */}
           <div>
             <button
@@ -1814,15 +1926,25 @@ export function StaffEventDetail({
               {showModalSov ? 'Nascondi extra e sovraprezzo' : '+ Extra o sovraprezzo'}
             </button>
             {showModalSov && (
-              <div className="mt-2.5 grid grid-cols-3 gap-2.5">
+              <div className="mt-2.5 grid grid-cols-2 gap-2.5">
                 <div>
                   <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
-                    Extra (€)
+                    Extra Sì scar. (€)
                   </span>
                   <NumericCellInput
                     value={newTblExtra}
                     onCommit={setNewTblExtra}
-                    ariaLabel="Extra"
+                    ariaLabel="Extra sì scarico"
+                  />
+                </div>
+                <div>
+                  <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                    Extra No scar. (€)
+                  </span>
+                  <NumericCellInput
+                    value={newTblExtraNo}
+                    onCommit={setNewTblExtraNo}
+                    ariaLabel="Extra no scarico"
                   />
                 </div>
                 <div>
@@ -1860,7 +1982,10 @@ export function StaffEventDetail({
               </span>
               <span className="text-[18px] font-bold">
                 {formatEur(
-                  newTblPayers * newTblPrice + newTblSovPayers * newTblSovPrice + newTblExtra
+                  newTblPayers * newTblPrice +
+                    newTblSovPayers * newTblSovPrice +
+                    newTblExtra +
+                    newTblExtraNo
                 )}
               </span>
             </div>

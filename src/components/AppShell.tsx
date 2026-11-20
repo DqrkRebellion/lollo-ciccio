@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Banknote,
   BarChart3,
   CalendarRange,
   Moon,
@@ -13,7 +14,7 @@ import {
 } from 'lucide-react';
 import type { SyncState } from '../hooks/useAppData';
 
-export type NavTab = 'events' | 'staff' | 'dashboard' | 'ledger' | 'settings';
+export type NavTab = 'events' | 'staff' | 'cash' | 'dashboard' | 'ledger' | 'settings';
 
 export function AppShell({
   activeTab,
@@ -54,7 +55,7 @@ export function AppShell({
   onOpenNewEvent: () => void;
   children: React.ReactNode;
 }) {
-  const navItems: {
+  const desktopNavItems: {
     id: NavTab;
     label: string;
     shortLabel: string;
@@ -69,6 +70,12 @@ export function AppShell({
       icon: Users,
       badge: openStaffMancantiCount > 0 ? openStaffMancantiCount : undefined,
     },
+    {
+      id: 'cash',
+      label: 'Raccolta soldi',
+      shortLabel: 'Raccolta',
+      icon: Banknote,
+    },
     { id: 'dashboard', label: 'Dashboard', shortLabel: 'Stats', icon: BarChart3 },
     {
       id: 'ledger',
@@ -79,6 +86,9 @@ export function AppShell({
     },
     { id: 'settings', label: 'Impostazioni', shortLabel: 'Altro', icon: Settings },
   ];
+
+  // Clean 5-tab iOS bottom bar (Impostazioni lives in the top-right profile avatar on mobile!)
+  const mobileNavItems = desktopNavItems.filter((item) => item.id !== 'settings');
 
   const syncLabel =
     syncState === 'live'
@@ -157,7 +167,7 @@ export function AppShell({
 
           {/* Primary Navigation */}
           <nav aria-label="Navigazione principale" className="space-y-1">
-            {navItems.map((item) => {
+            {desktopNavItems.map((item) => {
               const Icon = item.icon;
               const active = activeTab === item.id;
               return (
@@ -329,6 +339,18 @@ export function AppShell({
           </button>
           <button
             type="button"
+            onClick={() => onSelectTab('settings')}
+            aria-label="Impostazioni e profilo"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-bold text-white apple-press cursor-pointer"
+            style={{
+              backgroundColor: userColor,
+              boxShadow: activeTab === 'settings' ? '0 0 0 2px var(--bg-surface), 0 0 0 4px var(--accent)' : 'none',
+            }}
+          >
+            {userDisplayName.slice(0, 2).toUpperCase()}
+          </button>
+          <button
+            type="button"
             onClick={onOpenNewEvent}
             aria-label="Nuova serata"
             className="flex h-8 w-8 items-center justify-center rounded-full text-white apple-press cursor-pointer"
@@ -354,7 +376,7 @@ export function AppShell({
         }}
       >
         <div className="grid grid-cols-5 h-[58px]">
-          {navItems.map((item) => {
+          {mobileNavItems.map((item) => {
             const Icon = item.icon;
             const active = activeTab === item.id;
             return (

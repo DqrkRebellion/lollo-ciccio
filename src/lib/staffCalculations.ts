@@ -158,18 +158,21 @@ export function computeStaffEventSummary(
     const pr1 = Number(row.price) || 0;
     const p2 = Number(row.surcharge_payers_count) || 0;
     const pr2 = Number(row.surcharge_price) || 0;
-    const ex = Number(row.extra) || 0;
+    const exSi = Number(row.extra) || 0;
+    const exNo = Number(row.extra_no_scarico) || 0;
     const px = p1 + p2;
-    const credito = round2(p1 * pr1 + p2 * pr2 + ex);
+    const scaricoBase = round2(p1 * pr1 + p2 * pr2 + exSi);
+    const credito = round2(scaricoBase + exNo);
+    const scaricoApplied = (row.scarico_status || 'DA SCARICARE') === 'DA SCARICARE' ? scaricoBase : 0;
     const paidCash = Number(row.paid_cash) || 0;
-    const mancanti = round2(credito - paidCash);
+    const mancanti = round2(scaricoApplied - paidCash);
 
     const prev = tableCreditByMember.get(key) || { totalCredit: 0, count: 0 };
     prev.totalCredit = round2(prev.totalCredit + credito);
     prev.count += 1;
     tableCreditByMember.set(key, prev);
 
-    return { row, key, member, px, credito, mancanti };
+    return { row, key, member, px, credito, scaricoBase, scaricoApplied, mancanti };
   });
 
   // 2. Compute Tables with combined-credit tier lookup
@@ -193,6 +196,8 @@ export function computeStaffEventSummary(
       planName: rules.planName,
       px: info.px,
       credito: info.credito,
+      scaricoBase: info.scaricoBase,
+      scaricoApplied: info.scaricoApplied,
       mancanti: info.mancanti,
       combinedMemberCredit: agg.totalCredit,
       combinedMemberTablesCount: agg.count,
@@ -268,6 +273,7 @@ export function computeStaffEventSummary(
         presalesRateApplied: 0,
         tablesCount: 0,
         tablesCredito: 0,
+        tablesScarico: 0,
         tablesPaidCash: 0,
         tablesMancanti: 0,
         tablesBusta: 0,
@@ -311,6 +317,7 @@ export function computeStaffEventSummary(
     r.tablesCount += 1;
     r.pxTables += ct.px;
     r.tablesCredito = round2(r.tablesCredito + ct.credito);
+    r.tablesScarico = round2(r.tablesScarico + ct.scaricoApplied);
     r.tablesPaidCash = round2(r.tablesPaidCash + (Number(ct.row.paid_cash) || 0));
     r.tablesMancanti = round2(r.tablesMancanti + ct.mancanti);
     r.tablesBusta = round2(r.tablesBusta + ct.bustaFinal);
@@ -327,7 +334,7 @@ export function computeStaffEventSummary(
   const membersRollup = Array.from(rollupMap.values())
     .map((r) => {
       r.pxTotal = r.pxPresales + r.pxTables;
-      r.scaricoTotal = round2(r.presalesScarico + r.presalesNote + r.tablesCredito);
+      r.scaricoTotal = round2(r.presalesScarico + r.presalesNote + r.tablesScarico);
       r.paidCashTotal = round2(r.presalesPaidCash + r.tablesPaidCash);
       r.mancantiTotal = round2(r.scaricoTotal - r.paidCashTotal);
       r.bustaTotal = round2(r.presalesBusta + r.tablesBusta);
@@ -343,11 +350,12 @@ export function computeStaffEventSummary(
     computedPresales.reduce((acc, p) => acc + (Number(p.row.revenue) || 0), 0)
   );
   const tablesCredito = round2(computedTables.reduce((acc, t) => acc + t.credito, 0));
+  const tablesScarico = round2(computedTables.reduce((acc, t) => acc + t.scaricoApplied, 0));
   const totalScarico = round2(
     computedPresales.reduce(
       (acc, p) => acc + (Number(p.row.scarico) || 0) + (Number(p.row.note_amount) || 0),
       0
-    ) + tablesCredito
+    ) + tablesScarico
   );
   const totalPaidCash = round2(
     computedPresales.reduce((acc, p) => acc + (Number(p.row.paid_cash) || 0), 0) +
@@ -372,6 +380,7 @@ export function computeStaffEventSummary(
     pxTotal: pxPresales + pxTables,
     presalesRevenue,
     tablesCredito,
+    tablesScarico,
     totalScarico,
     totalPaidCash,
     totalMancanti,

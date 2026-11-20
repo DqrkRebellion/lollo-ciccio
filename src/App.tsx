@@ -24,6 +24,9 @@ import { SpotlightSearch } from './components/SpotlightSearch';
 const StaffWorkspace = lazy(() =>
   import('./components/StaffWorkspace').then((m) => ({ default: m.StaffWorkspace }))
 );
+const CashCollectionView = lazy(() =>
+  import('./components/CashCollectionView').then((m) => ({ default: m.CashCollectionView }))
+);
 const DashboardView = lazy(() =>
   import('./components/DashboardView').then((m) => ({ default: m.DashboardView }))
 );
@@ -47,6 +50,7 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<NavTab>('events');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [cashEventId, setCashEventId] = useState<string | null>(null);
   const [newEventOpen, setNewEventOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
@@ -90,14 +94,16 @@ export default function App() {
 
   const isUnlocked = Boolean(session) && visitUnlocked;
   const data = useAppData(isUnlocked);
-  const staffData = useStaffData(isUnlocked, ownerPromoterId, data.pushUndo);
+  const staffData = useStaffData(isUnlocked, ownerPromoterId, data.pushUndo, () => {
+    data.fetchAll(true);
+  });
 
-  // Auto-select latest event when events load
-  useEffect(() => {
-    if (!selectedEventId && data.events.length > 0) {
-      setSelectedEventId(data.events[0].id);
+  const handleSelectNavTab = (tab: NavTab) => {
+    if (tab === activeTab && (tab === 'events' || tab === 'staff') && selectedEventId) {
+      setSelectedEventId(null);
     }
-  }, [data.events, selectedEventId]);
+    setActiveTab(tab);
+  };
 
   // Global Apple keyboard shortcuts (⌘K search, ⌘Z undo, ⌘⇧Z / Ctrl+Y redo)
   useEffect(() => {
@@ -199,7 +205,7 @@ export default function App() {
       ) : (
         <AppShell
           activeTab={activeTab}
-          onSelectTab={setActiveTab}
+          onSelectTab={handleSelectNavTab}
           teamName={data.settings.team_name}
           staffName={staffData.group.name}
           userDisplayName={currentAccount.displayName}
@@ -237,6 +243,12 @@ export default function App() {
                   settings={data.settings}
                   promoters={data.promoters}
                   venues={data.venues}
+                  ownerPromoterId={ownerPromoterId}
+                  staffGroupName={staffData.group.name}
+                  staffSummariesByEvent={staffData.summariesByEvent}
+                  staffMembers={staffData.members}
+                  staffMemberUsageScore={staffData.memberUsageScore}
+                  staffTableByEventTableId={staffData.staffTableByEventTableId}
                   canUndo={data.canUndo}
                   canRedo={data.canRedo}
                   lastUndoLabel={data.lastUndoLabel}
@@ -257,9 +269,23 @@ export default function App() {
                   onUpsertPresalesBatch={data.upsertPresalesBatch}
                   onUpsertReconciliation={data.upsertReconciliation}
                   onUpsertReconciliationsBatch={data.upsertReconciliationsBatch}
-                  onAddTable={data.addTable}
-                  onUpdateTable={data.updateTable}
-                  onDeleteTable={data.deleteTable}
+                  onAddTable={async (evId, tbl) => {
+                    const created = await data.addTable(evId, tbl);
+                    if (created) staffData.fetchStaff(true);
+                    return created;
+                  }}
+                  onUpdateTable={async (evId, tblId, patch) => {
+                    await data.updateTable(evId, tblId, patch);
+                    staffData.fetchStaff(true);
+                  }}
+                  onDeleteTable={async (evId, tblId) => {
+                    await data.deleteTable(evId, tblId);
+                    staffData.fetchStaff(true);
+                  }}
+                  onAssignSubPrToTable={staffData.assignSubPrToEventTable}
+                  onQuickCreateStaffMember={(fullName) =>
+                    staffData.upsertMember({ full_name: fullName })
+                  }
                 />
               )}
 
@@ -290,6 +316,10 @@ export default function App() {
                     onUndo={data.undo}
                     onRedo={data.redo}
                     onOpenNewEvent={() => setNewEventOpen(true)}
+                    onOpenCashCollection={(eventId) => {
+                      setCashEventId(eventId);
+                      setActiveTab('cash');
+                    }}
                     onSyncPresalesToMain={async (eventId, quantity, revenue, oneToOne) => {
                       await data.upsertPresalesBatch(
                         eventId,
@@ -304,6 +334,23 @@ export default function App() {
                       toast.success(
                         `Prevendite di ${currentAccount.displayName} aggiornate sulla serata (${quantity} px)`
                       );
+                    }}
+                  />
+                )}
+
+                {activeTab === 'cash' && (
+                  <CashCollectionView
+                    events={data.events}
+                    selectedEventId={cashEventId ?? selectedEventId}
+                    onSelectEvent={setCashEventId}
+                    staffData={staffData}
+                    venues={data.venues}
+                    canUndo={data.canUndo}
+                    lastUndoLabel={data.lastUndoLabel}
+                    onUndo={data.undo}
+                    onOpenEventInStaff={(eventId) => {
+                      setSelectedEventId(eventId);
+                      setActiveTab('staff');
                     }}
                   />
                 )}
