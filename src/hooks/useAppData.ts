@@ -79,6 +79,10 @@ function normalizeEvent(
         ? toNumber(ev.busta_override)
         : null,
     commission_config: (ev.commission_config as FullEvent['commission_config']) ?? null,
+    ticketsms_event_id:
+      ev.ticketsms_event_id !== null && ev.ticketsms_event_id !== undefined
+        ? toNumber(ev.ticketsms_event_id)
+        : null,
     created_at: ev.created_at ? String(ev.created_at) : undefined,
     updated_at: ev.updated_at ? String(ev.updated_at) : undefined,
     presales,
@@ -376,6 +380,7 @@ export function useAppData(isAuthenticated: boolean) {
             presale_input_mode: snapshot.presale_input_mode,
             busta_override: snapshot.busta_override,
             commission_config: snapshot.commission_config,
+            ticketsms_event_id: snapshot.ticketsms_event_id,
           })
           .select()
           .single();

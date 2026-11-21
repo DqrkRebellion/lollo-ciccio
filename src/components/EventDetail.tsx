@@ -12,6 +12,7 @@ import {
   Redo2,
   Share2,
   SlidersHorizontal,
+  Ticket,
   Trash2,
   Undo2,
 } from 'lucide-react';
@@ -26,6 +27,7 @@ import {
   SegmentedControl,
 } from './ui/AppleControls';
 import { StaffMemberPicker, StaffMemberPickerButton } from './ui/StaffMemberPicker';
+import { TicketSmsPresalesTable } from './TicketSmsPresalesTable';
 import { computeTable, resolveRules } from '../lib/calculations';
 import {
   buildWhatsAppSummary,
@@ -50,6 +52,12 @@ import type {
   Venue,
 } from '../types';
 import type { StaffEventSummary, StaffEventTable, StaffMember } from '../types/staff';
+import type {
+  TicketSmsEvent,
+  TicketSmsReportRow,
+  TicketSmsSyncStatus,
+  TicketSmsTicketType,
+} from '../types/ticketsms';
 
 const SCARICO_CYCLE: ScaricoStatus[] = ['DA SCARICARE', 'DA NON SCARICARE', '-'];
 const QUICK_PAYERS = [5, 8, 10, 12, 15, 20];
@@ -102,6 +110,13 @@ export function EventDetail({
   staffMembers = [],
   staffMemberUsageScore,
   staffTableByEventTableId,
+  ticketSmsEvent = null,
+  ticketSmsReportRows = [],
+  ticketSmsTicketTypes = [],
+  ticketSmsSyncStatus = null,
+  ticketSmsSyncing = false,
+  ticketSmsSyncElapsedSec = 0,
+  onTriggerTicketSmsSync,
   canUndo,
   canRedo,
   lastUndoLabel,
@@ -133,6 +148,13 @@ export function EventDetail({
   staffMembers?: StaffMember[];
   staffMemberUsageScore?: Map<string, number>;
   staffTableByEventTableId?: Map<string, StaffEventTable>;
+  ticketSmsEvent?: TicketSmsEvent | null;
+  ticketSmsReportRows?: TicketSmsReportRow[];
+  ticketSmsTicketTypes?: TicketSmsTicketType[];
+  ticketSmsSyncStatus?: TicketSmsSyncStatus | null;
+  ticketSmsSyncing?: boolean;
+  ticketSmsSyncElapsedSec?: number;
+  onTriggerTicketSmsSync?: () => Promise<void>;
   canUndo: boolean;
   canRedo: boolean;
   lastUndoLabel: string | null;
@@ -492,6 +514,20 @@ export function EventDetail({
             />
             {event.venue_name}
           </span>
+          {ticketSmsEvent && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+              style={{
+                backgroundColor: ticketSmsEvent.is_active
+                  ? 'var(--accent-subtle)'
+                  : 'var(--bg-surface-secondary)',
+                color: ticketSmsEvent.is_active ? 'var(--accent)' : 'var(--ink-secondary)',
+              }}
+            >
+              <Ticket className="h-3 w-3" aria-hidden="true" />
+              TicketSMS
+            </span>
+          )}
           {event.era === '3PX' && (
             <span
               className="rounded-full px-2 py-0.5 text-[11px] font-medium"
@@ -1653,6 +1689,20 @@ export function EventDetail({
             </tbody>
           </table>
         </div>
+
+        {/* Integrated TicketSMS XLS/CSV Report Table right inside Prevendite */}
+        {ticketSmsEvent && onTriggerTicketSmsSync && (
+          <TicketSmsPresalesTable
+            eventTitle={event.title}
+            tsEvent={ticketSmsEvent}
+            reportRows={ticketSmsReportRows}
+            ticketTypes={ticketSmsTicketTypes}
+            syncStatus={ticketSmsSyncStatus}
+            syncing={ticketSmsSyncing}
+            syncElapsedSec={ticketSmsSyncElapsedSec}
+            onTriggerSync={onTriggerTicketSmsSync}
+          />
+        )}
       </section>
 
       {/* 4. Sezione Tavoli */}

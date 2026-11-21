@@ -61,6 +61,7 @@ export interface EventRecord {
   presale_input_mode: PresaleInputMode;
   busta_override: number | null;
   commission_config: Partial<CommissionRules> | null;
+  ticketsms_event_id: number | null;
   created_at?: string;
   updated_at?: string;
 }

@@ -51,6 +51,24 @@ export interface TicketSmsTeamSale {
   synced_at: string | null;
 }
 
+export interface TicketSmsReportRow {
+  id: string;
+  event_id: number;
+  promoter_name: string;
+  ticket_type: string;
+  price: number;
+  online_qty: number;
+  online_revenue: number;
+  one_to_one_qty: number;
+  one_to_one_revenue: number;
+  box_office_qty: number;
+  box_office_revenue: number;
+  total_qty: number;
+  total_revenue: number;
+  row_order: number;
+  synced_at: string | null;
+}
+
 export type TicketSmsSyncState = 'ok' | 'session_expired' | 'error';
 
 export interface TicketSmsSyncStatus {

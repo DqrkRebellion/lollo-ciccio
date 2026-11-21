@@ -1,7 +1,17 @@
 import { useMemo, useState } from 'react';
-import { CalendarDays, CheckCircle2, Plus, Search, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  CalendarDays,
+  CheckCircle2,
+  Plus,
+  RefreshCw,
+  Search,
+  Ticket,
+  X,
+} from 'lucide-react';
 import { EventDetail } from './EventDetail';
 import { formatDateDayMonth, formatEur, formatInt, formatMonthYear } from '../lib/format';
+import type { useTicketSmsData } from '../hooks/useTicketSmsData';
 import type {
   AppSettings,
   EventPresale,
@@ -29,6 +39,7 @@ export function EventWorkspace({
   staffMembers,
   staffMemberUsageScore,
   staffTableByEventTableId,
+  ticketSmsData,
   canUndo,
   canRedo,
   lastUndoLabel,
@@ -62,6 +73,7 @@ export function EventWorkspace({
   staffMembers: StaffMember[];
   staffMemberUsageScore: Map<string, number>;
   staffTableByEventTableId: Map<string, StaffEventTable>;
+  ticketSmsData: ReturnType<typeof useTicketSmsData>;
   canUndo: boolean;
   canRedo: boolean;
   lastUndoLabel: string | null;
@@ -172,6 +184,19 @@ export function EventWorkspace({
 
   // Focused Full-Screen Event Detail (zero distracting sidebar of other events!)
   if (activeEvent && activeSummary) {
+    const linkedTsEvent =
+      activeEvent.ticketsms_event_id !== null
+        ? ticketSmsData.eventsById.get(activeEvent.ticketsms_event_id) ?? null
+        : null;
+    const linkedReportRows =
+      activeEvent.ticketsms_event_id !== null
+        ? ticketSmsData.reportRowsByEvent.get(activeEvent.ticketsms_event_id) ?? []
+        : [];
+    const linkedTicketTypes =
+      activeEvent.ticketsms_event_id !== null
+        ? ticketSmsData.ticketTypesByEvent.get(activeEvent.ticketsms_event_id) ?? []
+        : [];
+
     return (
       <EventDetail
         key={activeEvent.id}
@@ -186,6 +211,13 @@ export function EventWorkspace({
         staffMembers={staffMembers}
         staffMemberUsageScore={staffMemberUsageScore}
         staffTableByEventTableId={staffTableByEventTableId}
+        ticketSmsEvent={linkedTsEvent}
+        ticketSmsReportRows={linkedReportRows}
+        ticketSmsTicketTypes={linkedTicketTypes}
+        ticketSmsSyncStatus={ticketSmsData.syncStatus}
+        ticketSmsSyncing={ticketSmsData.syncing}
+        ticketSmsSyncElapsedSec={ticketSmsData.syncElapsedSec}
+        onTriggerTicketSmsSync={ticketSmsData.triggerManualSync}
         canUndo={canUndo}
         canRedo={canRedo}
         lastUndoLabel={lastUndoLabel}
@@ -209,6 +241,9 @@ export function EventWorkspace({
     );
   }
 
+  const tsStatus = ticketSmsData.syncStatus;
+  const showTsAlert = tsStatus?.status === 'session_expired' || tsStatus?.status === 'error';
+
   // Clean Full-Width Events Directory
   return (
     <div className="mx-auto w-full max-w-[1040px] px-4 sm:px-6 lg:px-8 pt-5 pb-28 lg:pb-12 space-y-5">
@@ -221,16 +256,82 @@ export function EventWorkspace({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onOpenNewEvent}
-          className="inline-flex items-center gap-1.5 rounded-[11px] px-4 py-2.5 text-[14px] font-semibold text-white apple-press cursor-pointer"
-          style={{ backgroundColor: 'var(--accent)' }}
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Nuova serata
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={ticketSmsData.syncing}
+            onClick={() => ticketSmsData.triggerManualSync()}
+            title="Sincronizza serate e prevendite da TicketSMS"
+            className="inline-flex items-center gap-1.5 rounded-[11px] px-3.5 py-2.5 text-[13px] font-semibold apple-surface apple-press cursor-pointer disabled:opacity-70"
+            style={{ color: 'var(--ink-primary)' }}
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${ticketSmsData.syncing ? 'animate-spin' : ''}`}
+              style={{ color: 'var(--accent)' }}
+              aria-hidden="true"
+            />
+            <span>
+              {ticketSmsData.syncing
+                ? ticketSmsData.syncElapsedSec > 0
+                  ? `TicketSMS… ${ticketSmsData.syncElapsedSec}s`
+                  : 'TicketSMS…'
+                : 'Aggiorna TicketSMS'}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenNewEvent}
+            className="inline-flex items-center gap-1.5 rounded-[11px] px-4 py-2.5 text-[14px] font-semibold text-white apple-press cursor-pointer"
+            style={{ backgroundColor: 'var(--accent)' }}
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Nuova serata
+          </button>
+        </div>
       </div>
+
+      {showTsAlert && (
+        <div
+          role="alert"
+          className="rounded-[14px] px-4 py-3 flex items-start gap-2.5 text-[13px]"
+          style={{
+            backgroundColor:
+              tsStatus?.status === 'session_expired'
+                ? 'var(--status-orange-bg)'
+                : 'var(--status-red-bg)',
+          }}
+        >
+          <AlertTriangle
+            className="h-4 w-4 shrink-0 mt-0.5"
+            style={{
+              color:
+                tsStatus?.status === 'session_expired'
+                  ? 'var(--status-orange)'
+                  : 'var(--status-red)',
+            }}
+            aria-hidden="true"
+          />
+          <div className="min-w-0">
+            <span
+              className="font-semibold"
+              style={{
+                color:
+                  tsStatus?.status === 'session_expired'
+                    ? 'var(--status-orange)'
+                    : 'var(--status-red)',
+              }}
+            >
+              {tsStatus?.status === 'session_expired'
+                ? 'Sessione TicketSMS scaduta.'
+                : 'Errore ultimo aggiornamento TicketSMS.'}
+            </span>{' '}
+            <span style={{ color: 'var(--ink-secondary)' }}>
+              {tsStatus?.message || 'Esegui aggiorna_ticketsms.bat dal PC per sincronizzare.'}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Search & Filters */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
@@ -346,6 +447,10 @@ export function EventWorkspace({
                   const ownBusta = s?.byPromoter[ownerPromoterId]?.bustaTotal ?? 0;
                   const staffBusta = ss?.totalBusta ?? 0;
                   const ownNet = Math.round((ownBusta - staffBusta) * 100) / 100;
+                  const linkedTs =
+                    ev.ticketsms_event_id !== null
+                      ? ticketSmsData.eventsById.get(ev.ticketsms_event_id)
+                      : undefined;
 
                   return (
                     <button
@@ -362,6 +467,23 @@ export function EventWorkspace({
                               style={{ backgroundColor: venueColor }}
                             />
                             <span className="text-[16px] font-semibold truncate">{ev.title}</span>
+                            {linkedTs && (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0"
+                                style={{
+                                  backgroundColor: linkedTs.is_active
+                                    ? 'var(--accent-subtle)'
+                                    : 'var(--bg-surface-secondary)',
+                                  color: linkedTs.is_active
+                                    ? 'var(--accent)'
+                                    : 'var(--ink-secondary)',
+                                }}
+                                title="Collegata automaticamente a TicketSMS"
+                              >
+                                <Ticket className="h-2.5 w-2.5" aria-hidden="true" />
+                                TicketSMS
+                              </span>
+                            )}
                           </div>
                           <div
                             className="mt-0.5 flex items-center gap-1.5 text-[12px] truncate"

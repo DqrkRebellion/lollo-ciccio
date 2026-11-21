@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
 import type {
   TicketSmsEvent,
+  TicketSmsReportRow,
   TicketSmsSyncState,
   TicketSmsSyncStatus,
   TicketSmsTeamSale,
@@ -22,11 +23,15 @@ function normalizeStatus(v: unknown): TicketSmsSyncState {
 const POLL_INTERVAL_MS = 3000;
 const POLL_MAX_DURATION_MS = 45000;
 
-export function useTicketSmsData(isAuthenticated: boolean) {
+export function useTicketSmsData(
+  isAuthenticated: boolean,
+  onSyncCompleted?: () => void
+) {
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState<TicketSmsEvent[]>([]);
   const [ticketTypes, setTicketTypes] = useState<TicketSmsTicketType[]>([]);
   const [teamSales, setTeamSales] = useState<TicketSmsTeamSale[]>([]);
+  const [reportRows, setReportRows] = useState<TicketSmsReportRow[]>([]);
   const [syncStatus, setSyncStatus] = useState<TicketSmsSyncStatus | null>(null);
 
   const [syncing, setSyncing] = useState(false);
@@ -37,6 +42,8 @@ export function useTicketSmsData(isAuthenticated: boolean) {
   const reloadTimerRef = useRef<number | null>(null);
   const syncStatusRef = useRef<TicketSmsSyncStatus | null>(null);
   syncStatusRef.current = syncStatus;
+  const onSyncCompletedRef = useRef(onSyncCompleted);
+  onSyncCompletedRef.current = onSyncCompleted;
 
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current) {
@@ -54,7 +61,7 @@ export function useTicketSmsData(isAuthenticated: boolean) {
   const fetchTicketSms = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const [evRes, typesRes, teamRes, statusRes] = await Promise.all([
+      const [evRes, typesRes, teamRes, reportRes, statusRes] = await Promise.all([
         supabase
           .from('ticketsms_events')
           .select('*')
@@ -70,13 +77,18 @@ export function useTicketSmsData(isAuthenticated: boolean) {
           .order('sold', { ascending: false })
           .order('total', { ascending: false }),
         supabase
+          .from('ticketsms_event_report_rows')
+          .select('*')
+          .order('row_order', { ascending: true }),
+        supabase
           .from('ticketsms_sync_status')
           .select('*')
           .eq('id', 1)
           .maybeSingle(),
       ]);
 
-      const firstErr = evRes.error || typesRes.error || teamRes.error || statusRes.error;
+      const firstErr =
+        evRes.error || typesRes.error || teamRes.error || reportRes.error || statusRes.error;
       if (firstErr) throw firstErr;
 
       setEvents(
@@ -138,6 +150,26 @@ export function useTicketSmsData(isAuthenticated: boolean) {
         }))
       );
 
+      setReportRows(
+        (reportRes.data || []).map((r) => ({
+          id: String(r.id),
+          event_id: toNum(r.event_id),
+          promoter_name: String(r.promoter_name ?? ''),
+          ticket_type: String(r.ticket_type ?? ''),
+          price: toNum(r.price, 0),
+          online_qty: toNum(r.online_qty, 0),
+          online_revenue: toNum(r.online_revenue, 0),
+          one_to_one_qty: toNum(r.one_to_one_qty, 0),
+          one_to_one_revenue: toNum(r.one_to_one_revenue, 0),
+          box_office_qty: toNum(r.box_office_qty, 0),
+          box_office_revenue: toNum(r.box_office_revenue, 0),
+          total_qty: toNum(r.total_qty, 0),
+          total_revenue: toNum(r.total_revenue, 0),
+          row_order: toNum(r.row_order, 0),
+          synced_at: r.synced_at ? String(r.synced_at) : null,
+        }))
+      );
+
       if (statusRes.data) {
         setSyncStatus({
           id: toNum(statusRes.data.id, 1),
@@ -180,6 +212,11 @@ export function useTicketSmsData(isAuthenticated: boolean) {
         { event: '*', schema: 'public', table: 'ticketsms_events' },
         scheduleReload
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'ticketsms_event_report_rows' },
+        scheduleReload
+      )
       .subscribe();
 
     return () => {
@@ -189,7 +226,15 @@ export function useTicketSmsData(isAuthenticated: boolean) {
     };
   }, [isAuthenticated, fetchTicketSms, stopPolling]);
 
-  // Pre-indexed maps per event_id for O(1) rendering
+  // Pre-indexed maps per event_id for O(1) lookups
+  const eventsById = useMemo(() => {
+    const map = new Map<number, TicketSmsEvent>();
+    for (const ev of events) {
+      map.set(ev.event_id, ev);
+    }
+    return map;
+  }, [events]);
+
   const ticketTypesByEvent = useMemo(() => {
     const map = new Map<number, TicketSmsTicketType[]>();
     for (const t of ticketTypes) {
@@ -213,22 +258,18 @@ export function useTicketSmsData(isAuthenticated: boolean) {
     return map;
   }, [teamSales]);
 
-  // Active events sorted ascending by event_date; Past events sorted descending by event_date
-  const activeEvents = useMemo(
-    () =>
-      events
-        .filter((e) => e.is_active)
-        .sort((a, b) => (a.event_date || '9999-12-31').localeCompare(b.event_date || '9999-12-31')),
-    [events]
-  );
-
-  const pastEvents = useMemo(
-    () =>
-      events
-        .filter((e) => !e.is_active)
-        .sort((a, b) => (b.event_date || '0000-01-01').localeCompare(a.event_date || '0000-01-01')),
-    [events]
-  );
+  const reportRowsByEvent = useMemo(() => {
+    const map = new Map<number, TicketSmsReportRow[]>();
+    for (const r of reportRows) {
+      const list = map.get(r.event_id) || [];
+      list.push(r);
+      map.set(r.event_id, list);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => a.row_order - b.row_order);
+    }
+    return map;
+  }, [reportRows]);
 
   const triggerManualSync = useCallback(async () => {
     if (syncing) return;
@@ -246,7 +287,6 @@ export function useTicketSmsData(isAuthenticated: boolean) {
 
       if (error) {
         let msg = error.message || 'Impossibile avviare la sincronizzazione';
-        // Extract detailed JSON error from FunctionsHttpError context if available
         const ctx = (error as { context?: Response }).context;
         if (ctx && typeof ctx.json === 'function') {
           try {
@@ -288,20 +328,16 @@ export function useTicketSmsData(isAuthenticated: boolean) {
         if (latestSyncedAt && latestMs > prevMs) {
           stopPolling();
           await fetchTicketSms(true);
+          onSyncCompletedRef.current?.();
           const status = normalizeStatus(latest?.status);
           if (status === 'session_expired') {
             toast.warning(
-              'Sessione TicketSMS scaduta: aggiorna il secret TICKETSMS_COOKIE su GitHub'
+              'Sessione TicketSMS scaduta: aggiorna il cookie o lancia aggiorna_ticketsms.bat'
             );
           } else if (status === 'error') {
             toast.error(latest?.message || 'Sincronizzazione completata con errore');
           } else {
-            const cnt = toNum(latest?.events_synced, 0);
-            toast.success(
-              cnt > 0
-                ? `TicketSMS aggiornato (${cnt} serate sincronizzate)`
-                : 'Dati TicketSMS aggiornati'
-            );
+            toast.success(latest?.message || 'Serate e prevendite TicketSMS aggiornate');
           }
           return;
         }
@@ -309,6 +345,7 @@ export function useTicketSmsData(isAuthenticated: boolean) {
         if (elapsed >= POLL_MAX_DURATION_MS) {
           stopPolling();
           await fetchTicketSms(true);
+          onSyncCompletedRef.current?.();
           toast.info(
             'Il workflow GitHub è ancora in esecuzione: i dati si aggiorneranno automaticamente appena pronto.'
           );
@@ -326,10 +363,10 @@ export function useTicketSmsData(isAuthenticated: boolean) {
   return {
     loading,
     events,
-    activeEvents,
-    pastEvents,
+    eventsById,
     ticketTypesByEvent,
     teamSalesByEvent,
+    reportRowsByEvent,
     syncStatus,
     syncing,
     syncElapsedSec,
