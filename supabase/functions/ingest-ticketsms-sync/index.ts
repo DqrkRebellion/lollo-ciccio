@@ -362,295 +362,168 @@ function matchStaffMember(rawName: string, members: StaffMemberRow[]): StaffMemb
 }
 
 function buildIosShortcutScript(endpointUrl: string, syncKey: string): string {
-  // Self-contained JavaScript for Apple iOS Shortcuts -> "Esegui JavaScript su pagina web"
-  // Runs directly inside Safari on https://my.ticketsms.it using Safari's logged-in session!
-  return `(async () => {
-  const ENDPOINT = ${JSON.stringify(endpointUrl)};
-  const SYNC_KEY = ${JSON.stringify(syncKey)};
-  let done = false;
-  const finish = (msg) => {
+  // Ultra-fast (~1s total) JavaScript for Apple iOS Shortcuts -> "Esegui JavaScript su pagina web"
+  // Fetches active events + 2 most recent past events in parallel, downloads ONLY their CSV reports
+  // in parallel (no heavy DashEvent HTML needed), and POSTs to Supabase Edge Function!
+  return `(function () {
+  var ENDPOINT = ${JSON.stringify(endpointUrl)};
+  var SYNC_KEY = ${JSON.stringify(syncKey)};
+  var done = false;
+  var step = 'init';
+  function finish(msg) {
     if (!done) {
       done = true;
       completion(String(msg));
     }
-  };
+  }
 
-  try {
-    if (location.hostname !== 'my.ticketsms.it') {
-      return finish('⚠️ Apri prima https://my.ticketsms.it su Safari e riprova.');
+  if (location.hostname !== 'my.ticketsms.it') {
+    finish('⚠️ Apri prima https://my.ticketsms.it su Safari e riprova.');
+    return;
+  }
+
+  function fetchTimeout(url, opts, ms) {
+    var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, ms) : null;
+    var merged = Object.assign({}, opts || {});
+    if (ctrl) merged.signal = ctrl.signal;
+    return fetch(url, merged).finally(function () {
+      if (timer) clearTimeout(timer);
+    });
+  }
+
+  function extractEid(link) {
+    var m = String(link || '').match(/eid=(\\d+)/);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  function mapEvents(data, isActive) {
+    var list = [];
+    var arr = (data && data.events) || [];
+    for (var i = 0; i < arr.length; i++) {
+      var item = arr[i];
+      var dashLink = item.dashEventLink || (item.actions && item.actions.dashEventLink) || '';
+      var eid = extractEid(dashLink);
+      if (!eid) continue;
+      list.push({
+        event_id: eid,
+        name: String(item.eventName || '').trim(),
+        event_date: String(item.eventDatetime || '').trim(),
+        weekday: String(item.eventDateWeekDay || '').trim(),
+        month: String(item.eventDateMonth || '').trim(),
+        year: String(item.eventDateYear || '').trim(),
+        location_name: String(item.eventLocationName || '').trim(),
+        cover_image_url: item.eventCoverImageUrl || null,
+        dash_url: dashLink,
+        shop_url: (item.actions && item.actions.shopButtonLink) || null,
+        is_active: isActive,
+        is_canceled: Boolean(item.isEventCanceled),
+        is_approved: item.isEventApproved !== false,
+        is_admin: Boolean(item.isUserEventAdmin)
+      });
     }
+    return list;
+  }
 
-    const parseMoney = (raw) => {
-      let s = (raw || '').replace(/[€\\u00a0\\s]/g, '');
-      if (s.includes(',') && s.includes('.')) s = s.replace(/\\./g, '').replace(',', '.');
-      else if (s.includes(',')) s = s.replace(',', '.');
-      const m = s.match(/-?\\d+(?:\\.\\d+)?/);
-      return m ? Math.round(parseFloat(m[0]) * 100) / 100 : 0;
-    };
-    const parseIntSafe = (raw) => {
-      const m = (raw || '').replace(/[.,\\s]/g, '').match(/-?\\d+/);
-      return m ? parseInt(m[0], 10) : 0;
-    };
-    const parseSoldEntered = (raw) => {
-      const p = (raw || '').split('/');
-      return p.length === 2 ? [parseIntSafe(p[0]), parseIntSafe(p[1])] : [parseIntSafe(raw), 0];
-    };
-    const extractEid = (link) => {
-      const m = String(link || '').match(/eid=(\\d+)/);
-      return m ? parseInt(m[1], 10) : null;
-    };
-
-    const fetchEventsList = async (includeTerminated, maxPages) => {
-      const out = [];
-      for (let page = 1; page <= maxPages; page++) {
-        const res = await fetch(
-          '/ajax/event/listEvents.php?includeTerminated=' + includeTerminated + '&page=' + page,
-          { credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } }
-        );
-        if (res.url && res.url.toLowerCase().includes('login.php')) {
-          throw new Error('Sessione TicketSMS scaduta: fai prima il login su my.ticketsms.it.');
-        }
-        if (!res.ok) throw new Error('Errore TicketSMS HTTP ' + res.status);
-        const text = await res.text();
-        let data;
-        try { data = JSON.parse(text); } catch {
-          throw new Error('Sessione TicketSMS scaduta: fai prima il login su my.ticketsms.it.');
-        }
-        if (!data || !data.result) {
-          throw new Error('Risposta TicketSMS non valida (controlla il login).');
-        }
-        for (const item of data.events || []) {
-          const dashLink = item.dashEventLink || (item.actions && item.actions.dashEventLink) || '';
-          const eid = extractEid(dashLink);
-          if (!eid) continue;
-          out.push({
-            event_id: eid,
-            name: String(item.eventName || '').trim(),
-            event_date: String(item.eventDatetime || '').trim(),
-            weekday: String(item.eventDateWeekDay || '').trim(),
-            month: String(item.eventDateMonth || '').trim(),
-            year: String(item.eventDateYear || '').trim(),
-            location_name: String(item.eventLocationName || '').trim(),
-            cover_image_url: item.eventCoverImageUrl || null,
-            dash_url: dashLink,
-            shop_url: (item.actions && item.actions.shopButtonLink) || null,
-            is_active: !includeTerminated,
-            is_canceled: Boolean(item.isEventCanceled),
-            is_approved: item.isEventApproved !== false,
-            is_admin: Boolean(item.isUserEventAdmin),
-          });
-        }
-        if (data.isLastPage !== false) break;
+  function fetchList(includeTerminated) {
+    return fetchTimeout(
+      '/ajax/event/listEvents.php?includeTerminated=' + includeTerminated + '&page=1',
+      { credentials: 'include', headers: { 'X-Requested-With': 'XMLHttpRequest' } },
+      4000
+    ).then(function (res) {
+      if (res.url && res.url.toLowerCase().indexOf('login.php') !== -1) {
+        throw new Error('Sessione TicketSMS scaduta: accedi prima su my.ticketsms.it.');
       }
-      return out;
-    };
-
-    const parseDashHtml = (htmlText) => {
-      const doc = new DOMParser().parseFromString(htmlText, 'text/html');
-      let location_full = null;
-      const navLi = doc.querySelector('.event-navigation-bar .page-breadcrumb li');
-      if (navLi) {
-        location_full = navLi.textContent.replace(/\\s+/g, ' ').trim().replace(/^presso\\s+/i, '').trim() || null;
+      if (!res.ok) throw new Error('TicketSMS HTTP ' + res.status);
+      return res.text();
+    }).then(function (txt) {
+      var data;
+      try { data = JSON.parse(txt); } catch (e) {
+        throw new Error('Sessione TicketSMS scaduta: accedi prima su my.ticketsms.it.');
       }
+      if (!data || !data.result) {
+        throw new Error('Sessione TicketSMS non valida: rifai login su my.ticketsms.it.');
+      }
+      return mapEvents(data, !includeTerminated);
+    });
+  }
 
-      let tickets_sent = 0, total_profit = 0, entered = 0, time_to_end = null;
-      doc.querySelectorAll('.dashboard-stat').forEach((stat) => {
-        const numEl = stat.querySelector('.details .number');
-        const descEl = stat.querySelector('.details .desc');
-        if (!numEl || !descEl) return;
-        const numTxt = numEl.textContent.replace(/\\s+/g, ' ').trim();
-        const descTxt = descEl.textContent.replace(/\\s+/g, ' ').trim().toLowerCase();
-        if (descTxt.includes('ticket') || descTxt.includes('bigliett') || descTxt.includes('inviat')) {
-          tickets_sent = parseIntSafe(numTxt);
-        } else if (descTxt.includes('profitto') || descTxt.includes('incasso') || descTxt.includes('totale')) {
-          total_profit = parseMoney(numTxt);
-        } else if (descTxt.includes('entrat')) {
-          entered = parseIntSafe(numTxt);
-        } else if (descTxt.includes('fine') || descTxt.includes('vendita')) {
-          time_to_end = numTxt;
+  function decodeCsv(buf) {
+    try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+    catch (e) { return new TextDecoder('iso-8859-1').decode(buf); }
+  }
+
+  step = 'lista serate';
+  Promise.all([fetchList(false), fetchList(true)])
+    .then(function (lists) {
+      var active = lists[0];
+      var recentPast = lists[1].slice(0, 2);
+      var seen = {};
+      var all = [];
+      active.concat(recentPast).forEach(function (ev) {
+        if (!seen[ev.event_id]) {
+          seen[ev.event_id] = true;
+          all.push(ev);
         }
       });
+      if (all.length === 0) {
+        throw new Error('Nessuna serata trovata sul tuo account TicketSMS.');
+      }
 
-      const ticket_types = [];
-      const byClass = {};
-      const repDiv = doc.querySelector('#printTableReport');
-      if (repDiv) {
-        repDiv.querySelectorAll('tbody tr').forEach((tr) => {
-          const classes = Array.from(tr.classList || []);
-          const detailCls = classes.find((c) => c.startsWith('typeTicket'));
-          const tds = tr.querySelectorAll('td');
-          if (detailCls && byClass[detailCls]) {
-            if (tds.length >= 5) {
-              const label = tds[2].textContent.replace(/\\s+/g, ' ').trim().toLowerCase();
-              const qty = parseIntSafe(tds[3].textContent);
-              const amt = parseMoney(tds[4].textContent);
-              const t = byClass[detailCls];
-              if (label.includes('online')) { t.online_sold = qty; t.online_total = amt; }
-              else if (label.includes('one to one')) { t.one_to_one_sold = qty; t.one_to_one_total = amt; }
-              else if (label.includes('cassa')) { t.box_office_sold = qty; t.box_office_total = amt; }
+      step = 'report CSV (' + all.length + ' serate)';
+      return Promise.all(all.map(function (ev) {
+        return fetchTimeout(
+          '/action/csvReportEvent.php?eid=' + ev.event_id,
+          { credentials: 'include' },
+          4000
+        ).then(function (r) {
+          if (r.url && r.url.toLowerCase().indexOf('login.php') !== -1) {
+            throw new Error('Sessione TicketSMS scaduta: accedi prima su my.ticketsms.it.');
+          }
+          if (!r.ok) return Object.assign({}, ev, { csv_text: '' });
+          return r.arrayBuffer().then(function (buf) {
+            var txt = decodeCsv(buf);
+            var low = txt.slice(0, 150).trim().toLowerCase();
+            if (low.indexOf('<!doctype') === 0 || low.indexOf('<html') === 0) {
+              return Object.assign({}, ev, { csv_text: '' });
             }
-            return;
-          }
-          if (tds.length < 5) return;
-          const firstTxt = tds[0].textContent.replace(/\\s+/g, ' ').trim();
-          if (firstTxt.toUpperCase().startsWith('TOTALE')) return;
-          let tid = null, clsKey = null;
-          const link = tds[0].querySelector('a[onclick]');
-          if (link) {
-            const m = (link.getAttribute('onclick') || '').match(/typeTicket(\\d+)/);
-            if (m) { tid = parseInt(m[1], 10); clsKey = 'typeTicket' + tid; }
-          }
-          const bTag = tds[0].querySelector('b');
-          const [sold, ent] = parseSoldEntered(tds[3].textContent);
-          const tt = {
-            ticket_type_id: tid,
-            name: bTag ? bTag.textContent.trim() : firstTxt,
-            description: tds[1].textContent.replace(/\\s+/g, ' ').trim(),
-            price: parseMoney(tds[2].textContent),
-            sold,
-            entered: ent,
-            total: parseMoney(tds[4].textContent),
-            online_sold: 0, online_total: 0,
-            one_to_one_sold: 0, one_to_one_total: 0,
-            box_office_sold: 0, box_office_total: 0,
-          };
-          ticket_types.push(tt);
-          if (clsKey) byClass[clsKey] = tt;
-        });
-      }
-
-      const team_sales = [];
-      const totCell = doc.querySelector('#totIncasso');
-      const teamTbl = totCell ? totCell.closest('table') : null;
-      if (teamTbl) {
-        teamTbl.querySelectorAll('tbody tr').forEach((tr) => {
-          const tds = tr.querySelectorAll('td');
-          if (tds.length < 3 || tds[2].id === 'totIncasso') return;
-          const fullTxt = tds[0].textContent.replace(/\\s+/g, ' ').trim();
-          if (fullTxt.toUpperCase() === 'TOTALE') return;
-          let pr_id = null, pr_name = fullTxt;
-          const a = tds[0].querySelector('a[href]');
-          if (a) {
-            const mp = (a.getAttribute('href') || '').match(/pid=(\\d+)/);
-            if (mp) pr_id = parseInt(mp[1], 10);
-            pr_name = a.textContent.replace(/\\s+/g, ' ').trim();
-          }
-          const ms = fullTxt.match(/\\(\\s*\\+\\s*(\\d+)\\s*PR\\s*\\)/i);
-          const [sold, ent] = parseSoldEntered(tds[1].textContent);
-          team_sales.push({
-            pr_id,
-            pr_name,
-            sub_pr_count: ms ? parseInt(ms[1], 10) : 0,
-            is_self: pr_id === null && (pr_name.toLowerCase() === 'io' || pr_name.toLowerCase() === 'me'),
-            sold,
-            entered: ent,
-            total: parseMoney(tds[2].textContent),
+            return Object.assign({}, ev, { csv_text: txt });
           });
+        }).catch(function () {
+          return Object.assign({}, ev, { csv_text: '' });
         });
-      }
-
-      return { tickets_sent, total_profit, entered, time_to_end, location_full, ticket_types, team_sales };
-    };
-
-    const decodeCsv = (buf) => {
-      try {
-        return new TextDecoder('utf-8', { fatal: true }).decode(buf);
-      } catch {
-        return new TextDecoder('iso-8859-1').decode(buf);
-      }
-    };
-
-    const activeEvents = await fetchEventsList(false, 5);
-    const terminatedEvents = await fetchEventsList(true, 1);
-    const evMap = new Map();
-    for (const ev of activeEvents) evMap.set(ev.event_id, ev);
-    for (const ev of terminatedEvents) {
-      if (!evMap.has(ev.event_id)) evMap.set(ev.event_id, ev);
-    }
-    const allEvents = Array.from(evMap.values());
-
-    // Fetch Dashboard + CSV in parallel (4 at a time) so it finishes in ~2s on mobile!
-    const enriched = new Array(allEvents.length);
-    let cursor = 0;
-    const worker = async () => {
-      while (cursor < allEvents.length) {
-        const idx = cursor++;
-        const ev = allEvents[idx];
-        const [dashRes, csvRes] = await Promise.all([
-          fetch('/DashEvent.php?eid=' + ev.event_id, { credentials: 'include' }),
-          fetch('/action/csvReportEvent.php?eid=' + ev.event_id, { credentials: 'include' }),
-        ]);
-        if (
-          (dashRes.url && dashRes.url.toLowerCase().includes('login.php')) ||
-          (csvRes.url && csvRes.url.toLowerCase().includes('login.php'))
-        ) {
-          throw new Error('Sessione TicketSMS scaduta: fai prima il login.');
-        }
-        const dashHtml = dashRes.ok ? await dashRes.text() : '';
-        const dash = dashHtml ? parseDashHtml(dashHtml) : null;
-        let csv_text = '';
-        if (csvRes.ok) {
-          const buf = await csvRes.arrayBuffer();
-          const decoded = decodeCsv(buf);
-          const head = decoded.slice(0, 200).trim().toLowerCase();
-          if (!head.startsWith('<!doctype') && !head.startsWith('<html')) {
-            csv_text = decoded;
+      }));
+    })
+    .then(function (enriched) {
+      step = 'invio al Gestionale';
+      return fetchTimeout(
+        ENDPOINT,
+        {
+          method: 'POST',
+          mode: 'cors',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-sync-key': SYNC_KEY
+          },
+          body: JSON.stringify({ source: 'ios_shortcut', events: enriched })
+        },
+        5500
+      ).then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (out) {
+          if (!res.ok || !out.ok) {
+            throw new Error(out.error || 'Errore Gestionale HTTP ' + res.status);
           }
-        }
-        enriched[idx] = { ...ev, dash, csv_text };
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(4, Math.max(1, allEvents.length)) }, worker));
-
-    const postRes = await fetch(ENDPOINT, {
-      method: 'POST',
-      mode: 'cors',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-sync-key': SYNC_KEY,
-      },
-      body: JSON.stringify({
-        source: 'ios_shortcut',
-        events: enriched,
-      }),
+          finish('✅ ' + (out.message || 'Dati TicketSMS aggiornati!'));
+        });
+      });
+    })
+    .catch(function (err) {
+      var msg = (err && err.name === 'AbortError')
+        ? 'Timeout durante: ' + step
+        : (err && err.message ? err.message : String(err));
+      finish('❌ ' + msg);
     });
-
-    const out = await postRes.json().catch(() => ({}));
-    if (!postRes.ok || !out.ok) {
-      throw new Error(out.error || 'Errore sync Gestionale HTTP ' + postRes.status);
-    }
-
-    finish('✅ ' + (out.message || 'Dati TicketSMS sincronizzati!'));
-  } catch (err) {
-    finish('❌ ' + (err && err.message ? err.message : String(err)));
-  }
 })();`;
-}
-
-interface IncomingTicketType {
-  ticket_type_id: number | null;
-  name: string;
-  description?: string;
-  price: number;
-  sold: number;
-  entered: number;
-  total: number;
-  online_sold?: number;
-  online_total?: number;
-  one_to_one_sold?: number;
-  one_to_one_total?: number;
-  box_office_sold?: number;
-  box_office_total?: number;
-}
-
-interface IncomingTeamSale {
-  pr_id: number | null;
-  pr_name: string;
-  sub_pr_count?: number;
-  is_self?: boolean;
-  sold: number;
-  entered: number;
-  total: number;
 }
 
 interface IncomingEvent {
@@ -668,15 +541,6 @@ interface IncomingEvent {
   is_canceled?: boolean;
   is_approved?: boolean;
   is_admin?: boolean;
-  dash?: {
-    tickets_sent?: number;
-    total_profit?: number;
-    entered?: number;
-    time_to_end?: string | null;
-    location_full?: string | null;
-    ticket_types?: IncomingTicketType[];
-    team_sales?: IncomingTeamSale[];
-  } | null;
   csv_text?: string;
 }
 
@@ -713,9 +577,7 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: 'Payload JSON non valido' }, 400, origin);
     }
 
-    // ------------------------------------------------------------------
     // Action 1: Return personalized iOS Shortcut JS to authenticated Lollo
-    // ------------------------------------------------------------------
     if (body.action === 'get_ios_script') {
       const authHeader = req.headers.get('authorization') || '';
       const token = authHeader.replace(/^Bearer\s+/i, '').trim();
@@ -752,9 +614,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ------------------------------------------------------------------
-    // Action 2: Ingest TicketSMS data from iOS Shortcut (Lollo only)
-    // ------------------------------------------------------------------
+    // Action 2: Fast batched ingest for Lollo ONLY (Ciccio's total is entered manually)
     const providedKey = (req.headers.get('x-sync-key') || '').trim();
     if (!providedKey || !timingSafeEqual(providedKey, ingestSecret)) {
       return jsonResponse({ error: 'Chiave sincronizzazione non valida' }, 401, origin);
@@ -769,7 +629,6 @@ Deno.serve(async (req: Request) => {
     const todayIso = nowIso.slice(0, 10);
     const ownerPromoterId = 'lollo';
 
-    // Deduplicate incoming events by event_id
     const eventsById = new Map<number, IncomingEvent>();
     for (const ev of incomingEvents) {
       const eid = Number(ev.event_id);
@@ -779,16 +638,15 @@ Deno.serve(async (req: Request) => {
 
     const parsedReportsById = new Map<number, ParsedCsvRow[]>();
     const rawEventRows: Record<string, unknown>[] = [];
-    const ticketTypesByKey = new Map<string, Record<string, unknown>>();
-    const teamByKey = new Map<string, Record<string, unknown>>();
-
     let activeEventsCount = 0;
 
     for (const [eid, ev] of eventsById.entries()) {
       if (ev.is_active) activeEventsCount += 1;
-      const dash = ev.dash || null;
       const csvRows = ev.csv_text ? parseEventReportCsv(ev.csv_text) : [];
       parsedReportsById.set(eid, csvRows);
+
+      const totQty = csvRows.reduce((a, r) => a + r.total_qty, 0);
+      const totRev = round2(csvRows.reduce((a, r) => a + r.total_revenue, 0));
 
       rawEventRows.push({
         event_id: eid,
@@ -798,7 +656,7 @@ Deno.serve(async (req: Request) => {
         month: ev.month || '',
         year: String(ev.year || ''),
         location_name: ev.location_name || '',
-        location_full: dash?.location_full || ev.location_name || '',
+        location_full: ev.location_name || '',
         cover_image_url: ev.cover_image_url ?? null,
         dash_url: ev.dash_url || '',
         shop_url: ev.shop_url ?? null,
@@ -806,131 +664,60 @@ Deno.serve(async (req: Request) => {
         is_canceled: Boolean(ev.is_canceled),
         is_approved: ev.is_approved !== false,
         is_admin: Boolean(ev.is_admin),
-        tickets_sent: Number(dash?.tickets_sent || 0),
-        total_profit: round2(Number(dash?.total_profit || 0)),
-        entered: Number(dash?.entered || 0),
-        time_to_end: dash?.time_to_end ?? null,
+        tickets_sent: totQty,
+        total_profit: totRev,
         synced_at: nowIso,
       });
-
-      for (const tt of dash?.ticket_types || []) {
-        const tKey = `${eid}\u0000${tt.name}`;
-        const prev = ticketTypesByKey.get(tKey);
-        if (prev) {
-          prev.sold = Number(prev.sold) + Number(tt.sold || 0);
-          prev.entered = Number(prev.entered) + Number(tt.entered || 0);
-          prev.total = round2(Number(prev.total) + Number(tt.total || 0));
-          prev.online_sold = Number(prev.online_sold) + Number(tt.online_sold || 0);
-          prev.online_total = round2(Number(prev.online_total) + Number(tt.online_total || 0));
-          prev.one_to_one_sold = Number(prev.one_to_one_sold) + Number(tt.one_to_one_sold || 0);
-          prev.one_to_one_total = round2(
-            Number(prev.one_to_one_total) + Number(tt.one_to_one_total || 0)
-          );
-          prev.box_office_sold = Number(prev.box_office_sold) + Number(tt.box_office_sold || 0);
-          prev.box_office_total = round2(
-            Number(prev.box_office_total) + Number(tt.box_office_total || 0)
-          );
-        } else {
-          ticketTypesByKey.set(tKey, {
-            event_id: eid,
-            ticket_type_id: tt.ticket_type_id ?? null,
-            name: String(tt.name || ''),
-            description: String(tt.description || ''),
-            price: round2(Number(tt.price || 0)),
-            sold: Number(tt.sold || 0),
-            entered: Number(tt.entered || 0),
-            total: round2(Number(tt.total || 0)),
-            online_sold: Number(tt.online_sold || 0),
-            online_total: round2(Number(tt.online_total || 0)),
-            one_to_one_sold: Number(tt.one_to_one_sold || 0),
-            one_to_one_total: round2(Number(tt.one_to_one_total || 0)),
-            box_office_sold: Number(tt.box_office_sold || 0),
-            box_office_total: round2(Number(tt.box_office_total || 0)),
-            synced_at: nowIso,
-          });
-        }
-      }
-
-      for (const m of dash?.team_sales || []) {
-        const mKey = `${eid}\u0000${m.pr_name}`;
-        const prev = teamByKey.get(mKey);
-        if (prev) {
-          prev.sold = Number(prev.sold) + Number(m.sold || 0);
-          prev.entered = Number(prev.entered) + Number(m.entered || 0);
-          prev.total = round2(Number(prev.total) + Number(m.total || 0));
-          prev.sub_pr_count = Math.max(Number(prev.sub_pr_count), Number(m.sub_pr_count || 0));
-        } else {
-          teamByKey.set(mKey, {
-            event_id: eid,
-            pr_id: m.pr_id ?? null,
-            pr_name: String(m.pr_name || ''),
-            sub_pr_count: Number(m.sub_pr_count || 0),
-            is_self: Boolean(m.is_self),
-            sold: Number(m.sold || 0),
-            entered: Number(m.entered || 0),
-            total: round2(Number(m.total || 0)),
-            synced_at: nowIso,
-          });
-        }
-      }
     }
 
-    // 1. Upsert raw TicketSMS tables
-    const { error: evErr } = await admin
-      .from('ticketsms_events')
-      .upsert(rawEventRows, { onConflict: 'event_id' });
-    if (evErr) throw new Error(`ticketsms_events upsert: ${evErr.message}`);
+    // 1. Upsert ticketsms_events + fetch all app metadata IN PARALLEL!
+    const [
+      evUpsertRes,
+      venuesRes,
+      settingsRes,
+      promotersRes,
+      appEventsRes,
+      staffMembersRes,
+      staffPlansRes,
+    ] = await Promise.all([
+      admin.from('ticketsms_events').upsert(rawEventRows, { onConflict: 'event_id' }),
+      admin.from('venues').select('id,name,default_mode,default_lista_cost'),
+      admin.from('app_settings').select('*').eq('id', 1).maybeSingle(),
+      admin
+        .from('promoters')
+        .select('id,is_active,sort_order')
+        .order('sort_order', { ascending: true }),
+      admin.from('events').select('id,title,venue_id,venue_name,event_date,ticketsms_event_id'),
+      admin
+        .from('staff_members')
+        .select('id,full_name,nickname,aliases,is_self,plan_id')
+        .eq('owner_promoter_id', ownerPromoterId),
+      admin
+        .from('staff_commission_plans')
+        .select('id,name,presale_tiers,table_tiers,is_default')
+        .eq('owner_promoter_id', ownerPromoterId)
+        .order('is_default', { ascending: false }),
+    ]);
 
-    const ttRows = Array.from(ticketTypesByKey.values());
-    if (ttRows.length > 0) {
-      const { error: ttErr } = await admin
-        .from('ticketsms_ticket_types')
-        .upsert(ttRows, { onConflict: 'event_id,name' });
-      if (ttErr) throw new Error(`ticketsms_ticket_types upsert: ${ttErr.message}`);
-    }
-
-    const teamRows = Array.from(teamByKey.values());
-    if (teamRows.length > 0) {
-      const { error: teamErr } = await admin
-        .from('ticketsms_team_sales')
-        .upsert(teamRows, { onConflict: 'event_id,pr_name' });
-      if (teamErr) throw new Error(`ticketsms_team_sales upsert: ${teamErr.message}`);
-    }
-
-    for (const [eid, rows] of parsedReportsById.entries()) {
-      const { error: rpcErr } = await admin.rpc('replace_ticketsms_report_rows', {
-        p_event_id: eid,
-        p_rows: rows.map((r) => ({ ...r, synced_at: nowIso })),
-      });
-      if (rpcErr) throw new Error(`replace_ticketsms_report_rows(${eid}): ${rpcErr.message}`);
-    }
-
-    // 2. Load app metadata in parallel
-    const [venuesRes, settingsRes, promotersRes, appEventsRes, staffMembersRes, staffPlansRes] =
-      await Promise.all([
-        admin.from('venues').select('id,name,default_mode,default_lista_cost'),
-        admin.from('app_settings').select('*').eq('id', 1).maybeSingle(),
-        admin.from('promoters').select('id,is_active,sort_order').order('sort_order', { ascending: true }),
-        admin.from('events').select('id,title,venue_id,venue_name,event_date,ticketsms_event_id'),
-        admin
-          .from('staff_members')
-          .select('id,full_name,nickname,aliases,is_self,plan_id')
-          .eq('owner_promoter_id', ownerPromoterId),
-        admin
-          .from('staff_commission_plans')
-          .select('id,name,presale_tiers,table_tiers,is_default')
-          .eq('owner_promoter_id', ownerPromoterId)
-          .order('is_default', { ascending: false }),
-      ]);
-
-    const firstMetaErr =
+    const firstErr =
+      evUpsertRes.error ||
       venuesRes.error ||
       settingsRes.error ||
       promotersRes.error ||
       appEventsRes.error ||
       staffMembersRes.error ||
       staffPlansRes.error;
-    if (firstMetaErr) throw new Error(`Metadata fetch: ${firstMetaErr.message}`);
+    if (firstErr) throw new Error(firstErr.message);
+
+    // Replace report rows in parallel (non-blocking relative to matching)
+    const reportRpcPromises = Array.from(parsedReportsById.entries())
+      .filter(([, rows]) => rows.length > 0)
+      .map(([eid, rows]) =>
+        admin.rpc('replace_ticketsms_report_rows', {
+          p_event_id: eid,
+          p_rows: rows.map((r) => ({ ...r, synced_at: nowIso })),
+        })
+      );
 
     const venues = (venuesRes.data || []) as VenueRow[];
     const appSettings = settingsRes.data || {};
@@ -972,19 +759,12 @@ Deno.serve(async (req: Request) => {
     const selfPlanId = selfNoBustaPlan ? String(selfNoBustaPlan.id) : null;
 
     let createdEvents = 0;
-    let updatedPresales = 0;
-    let updatedStaffRows = 0;
+    const matchedEvents: { eid: number; ev: IncomingEvent; appEventId: string; justCreated: boolean }[] = [];
 
-    // 3. Sync each TicketSMS event into Lollo & Ciccio (`events`, Lollo's `event_presales`) + `Reverse` (`staff_event_presales`)
+    // 2. Match / create events
     for (const [eid, ev] of eventsById.entries()) {
-      const dash = ev.dash || null;
       const reportRows = parsedReportsById.get(eid) || [];
-      const venueInfo = resolveVenueForTicketSms(
-        ev.name,
-        ev.location_name || '',
-        dash?.location_full ?? null,
-        venues
-      );
+      const venueInfo = resolveVenueForTicketSms(ev.name, ev.location_name || '', null, venues);
 
       let matchedEvent = byTsId.get(eid) || null;
       if (!matchedEvent && ev.event_date) {
@@ -992,7 +772,8 @@ Deno.serve(async (req: Request) => {
           (ae) => ae.ticketsms_event_id === null && String(ae.event_date || '') === ev.event_date
         );
         const sameVenue = unlinkedSameDate.filter(
-          (ae) => String(ae.venue_name || '').trim().toLowerCase() === venueInfo.venueName.toLowerCase()
+          (ae) =>
+            String(ae.venue_name || '').trim().toLowerCase() === venueInfo.venueName.toLowerCase()
         );
         if (sameVenue.length === 1) {
           matchedEvent = sameVenue[0];
@@ -1027,8 +808,7 @@ Deno.serve(async (req: Request) => {
 
       let justCreated = false;
       if (!matchedEvent) {
-        const hasSales = reportRows.length > 0 || Number(dash?.tickets_sent || 0) > 0;
-        if (ev.is_canceled && !hasSales) continue;
+        if (ev.is_canceled && reportRows.length === 0) continue;
 
         const { data: insertedEv, error: insErr } = await admin
           .from('events')
@@ -1065,173 +845,228 @@ Deno.serve(async (req: Request) => {
         ]);
       }
 
-      const appEventId = String(matchedEvent.id);
-      const hasCsv = reportRows.length > 0;
-      let totQty = 0;
-      let totRev = 0;
-      let totOto = 0;
+      matchedEvents.push({ eid, ev, appEventId: String(matchedEvent.id), justCreated });
+    }
 
-      if (hasCsv) {
-        totQty = reportRows.reduce((a, r) => a + r.total_qty, 0);
-        totRev = round2(reportRows.reduce((a, r) => a + r.total_revenue, 0));
-        totOto = round2(reportRows.reduce((a, r) => a + r.one_to_one_revenue, 0));
-      } else if (dash && (Number(dash.tickets_sent || 0) > 0 || Number(dash.total_profit || 0) > 0)) {
-        totQty = Number(dash.tickets_sent || 0);
-        totRev = round2(Number(dash.total_profit || 0));
-        totOto = round2(
-          (dash.ticket_types || []).reduce((a, t) => a + Number(t.one_to_one_total || 0), 0)
-        );
+    // 3. Batch-fetch all existing staff_event_presales for matched events in ONE single query!
+    const matchedAppEventIds = matchedEvents.map((m) => m.appEventId);
+    const { data: allExistingSpData } =
+      matchedAppEventIds.length > 0
+        ? await admin
+            .from('staff_event_presales')
+            .select('id,event_id,staff_member_id,promoter_name,quantity,revenue,scarico,sort_order')
+            .eq('owner_promoter_id', ownerPromoterId)
+            .in('event_id', matchedAppEventIds)
+        : { data: [] };
+
+    const spByEventId = new Map<
+      string,
+      {
+        id: string;
+        event_id: string;
+        staff_member_id: string | null;
+        promoter_name: string;
+        quantity: number;
+        revenue: number;
+        scarico: number;
+        sort_order: number;
+      }[]
+    >();
+    for (const sp of allExistingSpData || []) {
+      const k = String(sp.event_id);
+      const arr = spByEventId.get(k) || [];
+      arr.push(sp);
+      spByEventId.set(k, arr);
+    }
+
+    // 4. Prepare batched event_presales upserts + missing staff_members + staff_event_presales writes
+    const lolloPresaleUpserts: Record<string, unknown>[] = [];
+    const newMembersToCreate = new Map<
+      string,
+      {
+        owner_promoter_id: string;
+        full_name: string;
+        nickname: string;
+        aliases: string[];
+        plan_id: string | null;
+        is_self: boolean;
+        is_active: boolean;
       }
+    >();
+
+    const perEventBuckets = new Map<
+      string,
+      { promoter_name: string; quantity: number; revenue: number; scarico: number }[]
+    >();
+
+    for (const item of matchedEvents) {
+      const reportRows = parsedReportsById.get(item.eid) || [];
+      const hasCsv = reportRows.length > 0;
+      const totQty = reportRows.reduce((a, r) => a + r.total_qty, 0);
+      const totRev = round2(reportRows.reduce((a, r) => a + r.total_revenue, 0));
+      const totOto = round2(reportRows.reduce((a, r) => a + r.one_to_one_revenue, 0));
 
       // Update ONLY Lollo's row in event_presales (Ciccio's total is entered manually!)
-      if (hasCsv || justCreated || ev.is_active || totQty > 0) {
-        await admin.from('event_presales').upsert(
-          {
-            event_id: appEventId,
-            promoter_id: 'lollo',
-            quantity: totQty,
-            revenue: totRev,
-            one_to_one: totOto,
-          },
-          { onConflict: 'event_id,promoter_id' }
-        );
-        updatedPresales += 1;
+      if (hasCsv || item.justCreated || item.ev.is_active || totQty > 0) {
+        lolloPresaleUpserts.push({
+          event_id: item.appEventId,
+          promoter_id: 'lollo',
+          quantity: totQty,
+          revenue: totRev,
+          one_to_one: totOto,
+        });
       }
 
-      // Sync Reverse sub-PR presales (`staff_event_presales` owner='lollo')
-      if (hasCsv) {
-        const grouped = new Map<
-          string,
-          { promoter_name: string; quantity: number; revenue: number; scarico: number }
-        >();
-        for (const r of reportRows) {
-          const prClean = r.promoter_name.trim();
-          if (!prClean) continue;
-          const key = prClean.toLowerCase();
-          const b = grouped.get(key) || {
-            promoter_name: prClean,
-            quantity: 0,
-            revenue: 0,
-            scarico: 0,
-          };
-          b.quantity += r.total_qty;
-          b.revenue = round2(b.revenue + r.total_revenue);
-          b.scarico = round2(b.scarico + r.one_to_one_revenue);
-          grouped.set(key, b);
-        }
+      if (!hasCsv) continue;
 
-        const activeBuckets = Array.from(grouped.values()).filter(
-          (b) => b.quantity > 0 || b.revenue > 0 || b.scarico > 0
-        );
+      const grouped = new Map<
+        string,
+        { promoter_name: string; quantity: number; revenue: number; scarico: number }
+      >();
+      for (const r of reportRows) {
+        const prClean = r.promoter_name.trim();
+        if (!prClean) continue;
+        const key = prClean.toLowerCase();
+        const b = grouped.get(key) || {
+          promoter_name: prClean,
+          quantity: 0,
+          revenue: 0,
+          scarico: 0,
+        };
+        b.quantity += r.total_qty;
+        b.revenue = round2(b.revenue + r.total_revenue);
+        b.scarico = round2(b.scarico + r.one_to_one_revenue);
+        grouped.set(key, b);
+      }
 
-        if (activeBuckets.length > 0) {
-          const { data: existingSpData } = await admin
-            .from('staff_event_presales')
-            .select('id,staff_member_id,promoter_name,quantity,revenue,scarico,sort_order')
-            .eq('owner_promoter_id', ownerPromoterId)
-            .eq('event_id', appEventId);
+      const activeBuckets = Array.from(grouped.values()).filter(
+        (b) => b.quantity > 0 || b.revenue > 0 || b.scarico > 0
+      );
+      perEventBuckets.set(item.appEventId, activeBuckets);
 
-          const existingSp = existingSpData || [];
-          let nextSort =
-            Math.max(-1, ...existingSp.map((x) => Number(x.sort_order || 0))) + 1;
-
-          for (const bucket of activeBuckets) {
-            const prName = bucket.promoter_name;
-            let member = matchStaffMember(prName, staffMembers);
-
-            if (!member) {
-              const isSelf = prName.toLowerCase() === 'io' || prName.toLowerCase() === 'me';
-              const { data: createdM } = await admin
-                .from('staff_members')
-                .insert({
-                  owner_promoter_id: ownerPromoterId,
-                  full_name: isSelf ? 'Io (Lollo)' : prName,
-                  nickname: isSelf ? 'Io' : prName.split(' ')[0],
-                  aliases: isSelf ? ['io'] : [prName.toLowerCase()],
-                  plan_id: isSelf ? selfPlanId : defaultPlanId,
-                  is_self: isSelf,
-                  is_active: true,
-                })
-                .select('id,full_name,nickname,aliases,is_self,plan_id')
-                .single();
-              if (createdM) {
-                member = createdM as StaffMemberRow;
-                staffMembers.push(member);
-              }
-            }
-
-            const memberId = member ? String(member.id) : null;
-            const existingRow = existingSp.find(
-              (sp) =>
-                (memberId && String(sp.staff_member_id || '') === memberId) ||
-                String(sp.promoter_name || '').trim().toLowerCase() === prName.toLowerCase()
-            );
-
-            if (existingRow) {
-              const sameVals =
-                Number(existingRow.quantity || 0) === bucket.quantity &&
-                Math.abs(Number(existingRow.revenue || 0) - bucket.revenue) < 0.005 &&
-                Math.abs(Number(existingRow.scarico || 0) - bucket.scarico) < 0.005 &&
-                (!memberId || String(existingRow.staff_member_id || '') === memberId);
-
-              if (!sameVals) {
-                // Preserves paid_cash, note_amount, note_text, busta_override, is_busta_paid!
-                await admin
-                  .from('staff_event_presales')
-                  .update({
-                    staff_member_id: memberId || existingRow.staff_member_id,
-                    quantity: bucket.quantity,
-                    revenue: bucket.revenue,
-                    scarico: bucket.scarico,
-                  })
-                  .eq('id', existingRow.id);
-                updatedStaffRows += 1;
-              }
-            } else {
-              const { data: insertedSp } = await admin
-                .from('staff_event_presales')
-                .insert({
-                  owner_promoter_id: ownerPromoterId,
-                  event_id: appEventId,
-                  staff_member_id: memberId,
-                  promoter_name: prName,
-                  quantity: bucket.quantity,
-                  revenue: bucket.revenue,
-                  scarico: bucket.scarico,
-                  sort_order: nextSort,
-                })
-                .select('id,staff_member_id,promoter_name,quantity,revenue,scarico,sort_order')
-                .single();
-              nextSort += 1;
-              updatedStaffRows += 1;
-              if (insertedSp) existingSp.push(insertedSp);
-            }
+      for (const bucket of activeBuckets) {
+        const prName = bucket.promoter_name;
+        const member = matchStaffMember(prName, staffMembers);
+        if (!member) {
+          const isSelf = prName.toLowerCase() === 'io' || prName.toLowerCase() === 'me';
+          const memKey = isSelf ? '__self__' : prName.toLowerCase();
+          if (!newMembersToCreate.has(memKey)) {
+            newMembersToCreate.set(memKey, {
+              owner_promoter_id: ownerPromoterId,
+              full_name: isSelf ? 'Io (Lollo)' : prName,
+              nickname: isSelf ? 'Io' : prName.split(' ')[0],
+              aliases: isSelf ? ['io'] : [prName.toLowerCase()],
+              plan_id: isSelf ? selfPlanId : defaultPlanId,
+              is_self: isSelf,
+              is_active: true,
+            });
           }
         }
       }
     }
 
-    const msgParts = [
-      `Sincronizzati ${eventsById.size} eventi (${activeEventsCount} attivi)`,
-    ];
+    // Batch-insert any new staff members in ONE query
+    if (newMembersToCreate.size > 0) {
+      const { data: createdMembers } = await admin
+        .from('staff_members')
+        .insert(Array.from(newMembersToCreate.values()))
+        .select('id,full_name,nickname,aliases,is_self,plan_id');
+      for (const cm of createdMembers || []) {
+        staffMembers.push(cm as StaffMemberRow);
+      }
+    }
+
+    const spInserts: Record<string, unknown>[] = [];
+    const spUpdates: PromiseLike<unknown>[] = [];
+
+    for (const [appEventId, activeBuckets] of perEventBuckets.entries()) {
+      const existingSp = spByEventId.get(appEventId) || [];
+      let nextSort = Math.max(-1, ...existingSp.map((x) => Number(x.sort_order || 0))) + 1;
+
+      for (const bucket of activeBuckets) {
+        const prName = bucket.promoter_name;
+        const member = matchStaffMember(prName, staffMembers);
+        const memberId = member ? String(member.id) : null;
+
+        const existingRow = existingSp.find(
+          (sp) =>
+            (memberId && String(sp.staff_member_id || '') === memberId) ||
+            String(sp.promoter_name || '').trim().toLowerCase() === prName.toLowerCase()
+        );
+
+        if (existingRow) {
+          const sameVals =
+            Number(existingRow.quantity || 0) === bucket.quantity &&
+            Math.abs(Number(existingRow.revenue || 0) - bucket.revenue) < 0.005 &&
+            Math.abs(Number(existingRow.scarico || 0) - bucket.scarico) < 0.005 &&
+            (!memberId || String(existingRow.staff_member_id || '') === memberId);
+
+          if (!sameVals) {
+            // Preserves paid_cash, note_amount, note_text, busta_override, is_busta_paid!
+            spUpdates.push(
+              admin
+                .from('staff_event_presales')
+                .update({
+                  staff_member_id: memberId || existingRow.staff_member_id,
+                  quantity: bucket.quantity,
+                  revenue: bucket.revenue,
+                  scarico: bucket.scarico,
+                })
+                .eq('id', existingRow.id)
+            );
+          }
+        } else {
+          spInserts.push({
+            owner_promoter_id: ownerPromoterId,
+            event_id: appEventId,
+            staff_member_id: memberId,
+            promoter_name: prName,
+            quantity: bucket.quantity,
+            revenue: bucket.revenue,
+            scarico: bucket.scarico,
+            sort_order: nextSort++,
+          });
+        }
+      }
+    }
+
+    const msgParts = [`Sincronizzati ${eventsById.size} eventi (${activeEventsCount} attivi)`];
     if (createdEvents > 0) {
       msgParts.push(
         `${createdEvents} nuov${createdEvents === 1 ? 'a' : 'e'} serat${createdEvents === 1 ? 'a' : 'e'} creat${createdEvents === 1 ? 'a' : 'e'}`
       );
     }
-    msgParts.push(`${updatedPresales} prevendite aggiornate`);
+    msgParts.push(`${lolloPresaleUpserts.length} prevendite aggiornate`);
     const summaryMessage = `${msgParts.join(', ')}.`;
 
-    await admin.from('ticketsms_sync_status').upsert(
-      {
-        id: 1,
-        status: 'ok',
-        events_synced: eventsById.size,
-        message: summaryMessage,
-        synced_at: nowIso,
-      },
-      { onConflict: 'id' }
-    );
+    // 5. Execute ALL remaining DB writes IN PARALLEL!
+    const finalWrites: PromiseLike<unknown>[] = [
+      ...reportRpcPromises,
+      ...spUpdates,
+      admin.from('ticketsms_sync_status').upsert(
+        {
+          id: 1,
+          status: 'ok',
+          events_synced: eventsById.size,
+          message: summaryMessage,
+          synced_at: nowIso,
+        },
+        { onConflict: 'id' }
+      ),
+    ];
+
+    if (lolloPresaleUpserts.length > 0) {
+      finalWrites.push(
+        admin
+          .from('event_presales')
+          .upsert(lolloPresaleUpserts, { onConflict: 'event_id,promoter_id' })
+      );
+    }
+    if (spInserts.length > 0) {
+      finalWrites.push(admin.from('staff_event_presales').insert(spInserts));
+    }
+
+    await Promise.all(finalWrites);
 
     return jsonResponse(
       {
@@ -1239,8 +1074,8 @@ Deno.serve(async (req: Request) => {
         events_synced: eventsById.size,
         active_events: activeEventsCount,
         created_events: createdEvents,
-        updated_presales: updatedPresales,
-        updated_staff_rows: updatedStaffRows,
+        updated_presales: lolloPresaleUpserts.length,
+        updated_staff_rows: spInserts.length + spUpdates.length,
         message: summaryMessage,
       },
       200,
