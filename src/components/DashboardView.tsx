@@ -5,14 +5,12 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
 import {
-  Award,
   Check,
   Crown,
   Flame,
@@ -42,7 +40,7 @@ type BustaFilter = 'ALL' | 'PAID' | 'UNPAID';
 type CashFilter = 'ALL' | 'OPEN' | 'SETTLED';
 type BonusFilter = 'ALL' | 'WITH_BONUS' | 'NO_BONUS';
 type DayBucket = 'FRI' | 'SAT' | 'SUN' | 'WEEKDAY';
-type ChartMetric = 'revenue' | 'px' | 'busta' | 'presalesRev' | 'tablesRev';
+type ChartMetric = 'revenue' | 'px' | 'busta';
 type ChartGranularity = 'month' | 'event';
 
 const DAY_LABELS: Record<DayBucket, string> = {
@@ -509,20 +507,12 @@ export function DashboardView({
     chartGranularity === 'month' ? stats.monthlySeries : stats.eventSeries;
 
   const chartColor =
-    chartMetric === 'busta'
-      ? '#34C759'
-      : chartMetric === 'tablesRev'
-        ? '#5856D6'
-        : chartMetric === 'presalesRev'
-          ? '#FF9500'
-          : '#0071E3';
+    chartMetric === 'busta' ? '#34C759' : '#0071E3';
 
   const metricLabelMap: Record<ChartMetric, string> = {
-    revenue: 'Fatturato totale (€)',
-    px: 'Ingressi totali (PX)',
-    busta: 'Buste maturate (€)',
-    presalesRev: 'Incasso prevendite (€)',
-    tablesRev: 'Credito tavoli (€)',
+    revenue: 'Fatturato (€)',
+    px: 'Ingressi (PX)',
+    busta: 'Buste (€)',
   };
 
   // Active filter chips for 1-tap inspection & removal
@@ -603,19 +593,14 @@ export function DashboardView({
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1160px] px-4 sm:px-6 lg:px-8 pt-5 pb-28 lg:pb-12 space-y-5">
+    <div className="mx-auto w-full max-w-[1040px] px-4 sm:px-6 lg:px-8 pt-5 pb-28 lg:pb-12 space-y-5">
       {/* Header + Quick Filter Bar */}
-      <div className="flex flex-col gap-3.5">
+      <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-[28px] sm:text-[34px] font-bold tracking-tight">Dashboard</h1>
-            <p className="mt-0.5 text-[14px]" style={{ color: 'var(--ink-secondary)' }}>
-              {promoterScope === 'TEAM'
-                ? 'Statistiche team'
-                : promoterScope === 'lollo'
-                  ? 'Statistiche personali · Lollo'
-                  : 'Statistiche personali · Ciccio'}{' '}
-              su <strong>{stats.eventsCount}</strong> serate · {formatInt(stats.tablesCount)} tavoli
+            <p className="mt-0.5 text-[13px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+              {stats.eventsCount} serate · {formatInt(stats.tablesCount)} tavoli
             </p>
           </div>
 
@@ -654,70 +639,29 @@ export function DashboardView({
           </div>
         </div>
 
-        {/* Fast Period + Venue Multi-Chip Scroller */}
-        <div className="flex flex-wrap items-center gap-2">
-          <SegmentedControl<PeriodPreset>
-            ariaLabel="Periodo"
-            size="sm"
-            className="w-full sm:w-auto"
-            value={period === 'CUSTOM' ? 'CUSTOM' : period}
-            onChange={(p) => {
-              if (p === 'CUSTOM') {
-                setFilterSheetOpen(true);
-              } else {
-                setPeriod(p);
-                setDateFrom('');
-                setDateTo('');
-              }
-            }}
-            options={[
-              { value: 'ALL', label: 'Tutto' },
-              { value: '2026', label: '2026' },
-              { value: '2025', label: '2025' },
-              { value: '90D', label: '90 gg' },
-              { value: '30D', label: '30 gg' },
-            ]}
-          />
-
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 max-w-full">
-            {uniqueVenues.slice(0, 6).map((v) => {
-              const active = selectedVenues.includes(v);
-              const color = venueColorMap.get(v) || '#0071E3';
-              return (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => toggleVenue(v)}
-                  className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium whitespace-nowrap apple-press cursor-pointer transition-colors"
-                  style={{
-                    backgroundColor: active ? `${color}22` : 'var(--bg-surface)',
-                    color: active ? color : 'var(--ink-secondary)',
-                    boxShadow: active ? `inset 0 0 0 1px ${color}` : 'var(--shadow-card)',
-                  }}
-                >
-                  <span
-                    className="h-2 w-2 rounded-full shrink-0"
-                    style={{ backgroundColor: color }}
-                  />
-                  {v}
-                </button>
-              );
-            })}
-            {uniqueVenues.length > 6 && (
-              <button
-                type="button"
-                onClick={() => setFilterSheetOpen(true)}
-                className="rounded-full px-3 py-1 text-[12px] font-medium whitespace-nowrap apple-press cursor-pointer"
-                style={{
-                  backgroundColor: 'var(--bg-surface-secondary)',
-                  color: 'var(--ink-secondary)',
-                }}
-              >
-                +{uniqueVenues.length - 6} locali
-              </button>
-            )}
-          </div>
-        </div>
+        {/* Period selector */}
+        <SegmentedControl<PeriodPreset>
+          ariaLabel="Periodo"
+          size="sm"
+          className="w-full sm:w-auto self-start"
+          value={period === 'CUSTOM' ? 'CUSTOM' : period}
+          onChange={(p) => {
+            if (p === 'CUSTOM') {
+              setFilterSheetOpen(true);
+            } else {
+              setPeriod(p);
+              setDateFrom('');
+              setDateTo('');
+            }
+          }}
+          options={[
+            { value: 'ALL', label: 'Tutto' },
+            { value: '2026', label: '2026' },
+            { value: '2025', label: '2025' },
+            { value: '90D', label: '90 gg' },
+            { value: '30D', label: '30 gg' },
+          ]}
+        />
 
         {/* Removable Active Filter Chips */}
         {activeChips.length > 0 && (
@@ -744,7 +688,7 @@ export function DashboardView({
               style={{ color: 'var(--ink-secondary)' }}
             >
               <RotateCcw className="h-3 w-3" aria-hidden="true" />
-              Resetta tutto
+              Resetta
             </button>
           </div>
         )}
@@ -755,28 +699,28 @@ export function DashboardView({
         <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 divide-x divide-[var(--separator)]">
           <div className="p-3.5 sm:p-5 min-w-0">
             <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-              Fatturato generato
+              Fatturato
             </span>
-            <div className="mt-1 text-[20px] sm:text-[30px] font-bold tracking-tight tabular-nums leading-none truncate">
+            <div className="mt-1 text-[20px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none truncate">
               {formatEur(stats.revTotal)}
             </div>
-            <div className="mt-2 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-              Media {formatEur(stats.avgRev)} / serata
+            <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+              Media {formatEur(stats.avgRev)}
             </div>
           </div>
 
           <div className="p-3.5 sm:p-5 min-w-0">
             <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-              Ingressi totali
+              Ingressi
             </span>
-            <div className="mt-1 text-[20px] sm:text-[30px] font-bold tracking-tight tabular-nums leading-none">
+            <div className="mt-1 text-[20px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none">
               {formatInt(stats.pxTotal)}
-              <span className="ml-1 text-[13px] sm:text-[14px] font-medium" style={{ color: 'var(--ink-tertiary)' }}>
+              <span className="ml-1 text-[13px] font-medium" style={{ color: 'var(--ink-tertiary)' }}>
                 px
               </span>
             </div>
-            <div className="mt-2 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-              Media {formatInt(stats.avgPx)} px ({formatInt(stats.pxPresales)}p · {formatInt(stats.pxTables)}t)
+            <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+              Media {formatInt(stats.avgPx)} px
             </div>
           </div>
 
@@ -785,92 +729,68 @@ export function DashboardView({
               Buste maturate
             </span>
             <div
-              className="mt-1 text-[20px] sm:text-[30px] font-bold tracking-tight tabular-nums leading-none truncate"
+              className="mt-1 text-[20px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none truncate"
               style={{ color: 'var(--status-green)' }}
             >
               {formatEur(stats.bustaTotal)}
             </div>
-            <div className="mt-2 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-              Media {formatEur(stats.avgBusta)} · Bonus {formatEur(stats.bonusTotal)} ({stats.bonusHits}×)
+            <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+              {stats.bonusTotal > 0
+                ? `Inclusi ${formatEur(stats.bonusTotal)} bonus`
+                : `Media ${formatEur(stats.avgBusta)}`}
             </div>
           </div>
 
           <div className="p-3.5 sm:p-5 min-w-0">
             <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-              Mix Prevendite / Tavoli
+              Quota tavoli
             </span>
-            <div className="mt-1 text-[20px] sm:text-[30px] font-bold tracking-tight tabular-nums leading-none">
+            <div className="mt-1 text-[20px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none">
               {formatPercent(stats.revTotal > 0 ? stats.revTables / stats.revTotal : 0)}
-              <span className="ml-1.5 text-[12px] sm:text-[13px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-                tavoli
-              </span>
             </div>
-            <div className="mt-2 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+            <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
               Tavolo medio {formatEur(stats.avgTableValue)}
             </div>
           </div>
         </div>
       </section>
 
-      {/* Trend Chart (Monthly Area OR Per-Event Bar!) */}
-      <section className="apple-surface rounded-[18px] p-4 sm:p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <div className="flex items-center gap-2.5">
-            <TrendingUp className="h-5 w-5" style={{ color: chartColor }} aria-hidden="true" />
-            <div>
-              <h2 className="text-[18px] font-semibold">
-                {chartGranularity === 'month' ? 'Andamento mensile' : 'Ultime serate filtrate'}
-              </h2>
-              <p className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
-                {metricLabelMap[chartMetric]}
-              </p>
-            </div>
+      {/* Trend Chart */}
+      <section className="apple-surface rounded-[18px] p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 mb-3.5">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4" style={{ color: chartColor }} aria-hidden="true" />
+            <h2 className="text-[16px] font-semibold">
+              {metricLabelMap[chartMetric]}
+            </h2>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <SegmentedControl<ChartMetric>
+              ariaLabel="Metrica grafico"
+              size="sm"
+              value={chartMetric}
+              onChange={setChartMetric}
+              options={[
+                { value: 'revenue', label: 'Fatturato' },
+                { value: 'px', label: 'PX' },
+                { value: 'busta', label: 'Buste' },
+              ]}
+            />
             <SegmentedControl<ChartGranularity>
               ariaLabel="Granularità grafico"
               size="sm"
               value={chartGranularity}
               onChange={setChartGranularity}
               options={[
-                { value: 'month', label: 'Per mese' },
-                { value: 'event', label: 'Per serata' },
+                { value: 'month', label: 'Mese' },
+                { value: 'event', label: 'Serata' },
               ]}
             />
           </div>
         </div>
 
-        {/* Metric selector pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-3">
-          {(
-            [
-              { id: 'revenue', label: 'Fatturato' },
-              { id: 'px', label: 'Ingressi PX' },
-              { id: 'busta', label: 'Buste' },
-              { id: 'presalesRev', label: 'Prevendite €' },
-              { id: 'tablesRev', label: 'Tavoli €' },
-            ] as { id: ChartMetric; label: string }[]
-          ).map((m) => {
-            const active = chartMetric === m.id;
-            return (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => setChartMetric(m.id)}
-                className="rounded-full px-3 py-1 text-[12px] font-semibold whitespace-nowrap apple-press cursor-pointer transition-colors"
-                style={{
-                  backgroundColor: active ? 'var(--accent)' : 'var(--bg-surface-secondary)',
-                  color: active ? '#FFFFFF' : 'var(--ink-secondary)',
-                }}
-              >
-                {m.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="h-[260px] w-full">
+        <div className="h-[240px] w-full">
           {activeSeries.length === 0 ? (
             <div
               className="h-full flex flex-col items-center justify-center gap-2 text-[14px]"
@@ -1003,16 +923,11 @@ export function DashboardView({
         </div>
       </section>
 
-      {/* Head-to-Head: Lollo vs Ciccio + Club Chart */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        <section className="lg:col-span-7 apple-surface rounded-[18px] p-5 space-y-5">
+      {/* Head-to-Head (only in Team scope) */}
+      {promoterScope === 'TEAM' && (
+        <section className="apple-surface rounded-[18px] p-5 space-y-4">
           <div className="flex items-center justify-between gap-2">
-            <div>
-              <h2 className="text-[18px] font-semibold">Confronto Lollo vs Ciccio</h2>
-              <p className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
-                Ripartizione diretta sulle serate filtrate
-              </p>
-            </div>
+            <h2 className="text-[16px] font-semibold">Lollo vs Ciccio</h2>
             <div className="flex items-center gap-3 text-[12px] font-semibold">
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-2.5 w-2.5 rounded-full bg-[#0071E3]" />
@@ -1025,22 +940,22 @@ export function DashboardView({
             </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-3.5">
             {[
               {
-                label: 'Fatturato generato',
+                label: 'Fatturato',
                 lVal: formatEur(stats.lollo.rev),
                 cVal: formatEur(stats.ciccio.rev),
                 pct: lolloRevPct,
               },
               {
-                label: 'Ingressi totali (PX)',
+                label: 'Ingressi',
                 lVal: `${formatInt(stats.lollo.px)} px`,
                 cVal: `${formatInt(stats.ciccio.px)} px`,
                 pct: lolloPxPct,
               },
               {
-                label: 'Buste maturate',
+                label: 'Buste',
                 lVal: formatEur(stats.lollo.busta, true),
                 cVal: formatEur(stats.ciccio.busta, true),
                 pct: lolloBustaPct,
@@ -1064,7 +979,7 @@ export function DashboardView({
                   </span>
                 </div>
                 <div
-                  className="flex h-2.5 w-full overflow-hidden rounded-full"
+                  className="flex h-2 w-full overflow-hidden rounded-full"
                   style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
                 >
                   <div
@@ -1079,252 +994,87 @@ export function DashboardView({
               </div>
             ))}
           </div>
-
-          <div
-            className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-4"
-            style={{ borderTop: '0.5px solid var(--separator)' }}
-          >
-            {[
-              { id: 'lollo', name: 'Lollo', color: '#0071E3', data: stats.lollo },
-              { id: 'ciccio', name: 'Ciccio', color: '#5856D6', data: stats.ciccio },
-            ].map((item) => (
-              <div
-                key={item.id}
-                className="rounded-[12px] p-3.5 space-y-1.5 tabular-nums"
-                style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                  <span className="text-[14px] font-semibold">{item.name}</span>
-                  <span className="ml-auto text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-                    {item.data.events} serate
-                  </span>
-                </div>
-                <div className="flex justify-between text-[12px]">
-                  <span style={{ color: 'var(--ink-secondary)' }}>Prevendite</span>
-                  <span className="font-medium">
-                    {formatInt(item.data.pxPreve)} px · {formatEur(item.data.revPreve)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-[12px]">
-                  <span style={{ color: 'var(--ink-secondary)' }}>Tavoli ({item.data.tables})</span>
-                  <span className="font-medium">
-                    {formatInt(item.data.pxTav)} px · {formatEur(item.data.revTav)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-[12px]">
-                  <span style={{ color: 'var(--ink-secondary)' }}>Media tavolo</span>
-                  <span className="font-semibold">
-                    {formatEur(item.data.tables > 0 ? item.data.revTav / item.data.tables : 0)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
         </section>
+      )}
 
-        <section className="lg:col-span-5 apple-surface rounded-[18px] p-5 flex flex-col justify-between gap-4">
-          <div>
-            <h2 className="text-[18px] font-semibold">Fatturato per locale</h2>
-            <p className="text-[12px] mb-3" style={{ color: 'var(--ink-secondary)' }}>
-              Top locali nel filtro attivo
-            </p>
-            <div className="h-[200px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={stats.venueLeaderboard.slice(0, 6)}
-                  layout="vertical"
-                  margin={{ top: 0, right: 14, left: 6, bottom: 0 }}
-                >
-                  <XAxis type="number" hide />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={86}
-                    tick={{ fill: 'var(--ink-primary)', fontSize: 12, fontWeight: 500 }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip
-                    cursor={{ fill: 'var(--bg-hover)' }}
-                    content={({ active, payload }) => {
-                      if (!active || !payload?.length) return null;
-                      const v = payload[0].payload as (typeof stats.venueLeaderboard)[number];
-                      return (
-                        <div
-                          className="rounded-[10px] px-3 py-2 text-[12px] tabular-nums"
-                          style={{
-                            backgroundColor: 'var(--bg-chrome-elevated)',
-                            boxShadow: 'var(--shadow-popover)',
-                          }}
-                        >
-                          <div className="font-semibold">{v.name}</div>
-                          <div>
-                            {formatEur(v.revenue)} · {formatInt(v.px)} px · {v.events} serate
-                          </div>
-                        </div>
-                      );
+      {/* Unified Locali Leaderboard (clickable to filter) */}
+      {stats.venueLeaderboard.length > 0 && (
+        <section className="apple-surface rounded-[18px] overflow-hidden">
+          <div
+            className="flex items-center justify-between px-5 py-3.5"
+            style={{ borderBottom: '0.5px solid var(--separator)' }}
+          >
+            <h2 className="text-[16px] font-semibold">Locali</h2>
+            <span className="text-[12px]" style={{ color: 'var(--ink-tertiary)' }}>
+              Tocca un locale per filtrare
+            </span>
+          </div>
+          <div className="apple-list">
+            {(() => {
+              const maxVenueRev = stats.venueLeaderboard[0]?.revenue || 1;
+              return stats.venueLeaderboard.map((v) => {
+                const isSelected = selectedVenues.includes(v.name);
+                const barPct = Math.max(4, Math.round((v.revenue / maxVenueRev) * 100));
+                return (
+                  <button
+                    key={v.name}
+                    type="button"
+                    onClick={() => toggleVenue(v.name)}
+                    className="w-full px-5 py-3 text-left hover:bg-[var(--bg-hover)] transition-colors cursor-pointer space-y-1.5"
+                    style={{
+                      backgroundColor: isSelected ? 'var(--bg-active)' : undefined,
                     }}
-                  />
-                  <Bar dataKey="revenue" radius={[0, 6, 6, 0]} barSize={18}>
-                    {stats.venueLeaderboard.slice(0, 6).map((v) => (
-                      <Cell key={v.name} fill={v.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          <div
-            className="grid grid-cols-2 gap-2.5 pt-3 tabular-nums"
-            style={{ borderTop: '0.5px solid var(--separator)' }}
-          >
-            <div
-              className="rounded-[12px] p-3"
-              style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
-            >
-              <div className="text-[11px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-                No ospite ({stats.noGuestEvents})
-              </div>
-              <div className="mt-0.5 text-[16px] font-bold">{formatEur(stats.noGuestAvgRev)}</div>
-              <div className="text-[11px]" style={{ color: 'var(--ink-tertiary)' }}>
-                media / serata
-              </div>
-            </div>
-            <div
-              className="rounded-[12px] p-3"
-              style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
-            >
-              <div className="text-[11px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-                Ospite ({stats.guestEvents})
-              </div>
-              <div className="mt-0.5 text-[16px] font-bold">{formatEur(stats.guestAvgRev)}</div>
-              <div className="text-[11px]" style={{ color: 'var(--ink-tertiary)' }}>
-                media / serata
-              </div>
-            </div>
+                  >
+                    <div className="flex items-center justify-between gap-3 tabular-nums">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className="h-2.5 w-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: v.color }}
+                        />
+                        <span className="text-[14px] font-semibold truncate">{v.name}</span>
+                        <span className="text-[12px] shrink-0" style={{ color: 'var(--ink-tertiary)' }}>
+                          {v.events} ser. · {formatInt(v.px)} px
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-[14px] font-semibold">{formatEur(v.revenue)}</span>
+                        <span
+                          className="text-[13px] font-semibold min-w-[68px] text-right"
+                          style={{ color: 'var(--status-green)' }}
+                        >
+                          {formatEur(v.busta, true)}
+                        </span>
+                      </div>
+                    </div>
+                    <div
+                      className="h-1.5 w-full rounded-full overflow-hidden"
+                      style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
+                    >
+                      <div
+                        className="h-full rounded-full"
+                        style={{ width: `${barPct}%`, backgroundColor: v.color }}
+                      />
+                    </div>
+                  </button>
+                );
+              });
+            })()}
           </div>
         </section>
-      </div>
+      )}
 
-      {/* Venue Full Leaderboard (Zero-scroll stacked cards on mobile, table on md+) */}
-      <section>
-        <h2 className="text-[18px] font-semibold mb-2.5 px-1">Rendimento per locale</h2>
-
-        {/* Mobile Stacked Cards */}
-        <div className="md:hidden space-y-2">
-          {stats.venueLeaderboard.map((v) => (
-            <button
-              key={v.name}
-              type="button"
-              onClick={() => toggleVenue(v.name)}
-              className="apple-surface w-full rounded-[14px] px-4 py-3 text-left apple-press cursor-pointer"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span
-                    className="h-2.5 w-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: v.color }}
-                  />
-                  <span className="text-[15px] font-semibold truncate">{v.name}</span>
-                  <span className="text-[12px] shrink-0" style={{ color: 'var(--ink-tertiary)' }}>
-                    · {v.events} ser.
-                  </span>
-                </div>
-                <span
-                  className="text-[15px] font-bold tabular-nums shrink-0"
-                  style={{ color: 'var(--status-green)' }}
-                >
-                  {formatEur(v.busta, true)}
-                </span>
-              </div>
-              <div
-                className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 text-[12px] tabular-nums"
-                style={{ color: 'var(--ink-secondary)' }}
-              >
-                <span>
-                  {formatInt(v.px)} px · {v.tables} tavoli
-                </span>
-                <span>
-                  Fatt. <strong style={{ color: 'var(--ink-primary)' }}>{formatEur(v.revenue)}</strong>{' '}
-                  (media {formatEur(v.revenue / (v.events || 1))})
-                </span>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        {/* Desktop Table */}
-        <div className="hidden md:block apple-surface rounded-[16px] overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[540px]">
-            <thead>
-              <tr
-                className="text-[12px] font-medium"
-                style={{
-                  color: 'var(--ink-secondary)',
-                  borderBottom: '0.5px solid var(--separator)',
-                }}
-              >
-                <th className="py-3 pl-4 pr-2 font-medium">Locale</th>
-                <th className="py-3 px-2 text-right font-medium">Serate</th>
-                <th className="py-3 px-2 text-right font-medium">PX</th>
-                <th className="py-3 px-2 text-right font-medium">Tavoli</th>
-                <th className="py-3 px-2 text-right font-medium">Fatturato</th>
-                <th className="py-3 px-2 text-right font-medium">Media / serata</th>
-                <th className="py-3 pl-2 pr-4 text-right font-medium">Buste</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--separator)] text-[14px] tabular-nums">
-              {stats.venueLeaderboard.map((v) => (
-                <tr
-                  key={v.name}
-                  onClick={() => toggleVenue(v.name)}
-                  className="hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
-                >
-                  <td className="py-3 pl-4 pr-2 font-semibold">
-                    <div className="flex items-center gap-2.5">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: v.color }}
-                      />
-                      {v.name}
-                    </div>
-                  </td>
-                  <td className="py-3 px-2 text-right">{v.events}</td>
-                  <td className="py-3 px-2 text-right font-medium">{formatInt(v.px)}</td>
-                  <td className="py-3 px-2 text-right" style={{ color: 'var(--ink-secondary)' }}>
-                    {v.tables}
-                  </td>
-                  <td className="py-3 px-2 text-right font-semibold">{formatEur(v.revenue)}</td>
-                  <td className="py-3 px-2 text-right" style={{ color: 'var(--ink-secondary)' }}>
-                    {formatEur(v.revenue / (v.events || 1))}
-                  </td>
-                  <td
-                    className="py-3 pl-2 pr-4 text-right font-semibold"
-                    style={{ color: 'var(--status-green)' }}
-                  >
-                    {formatEur(v.busta, true)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {/* Hall of Fame */}
+      {/* Top Serate & Tavoli Record */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <section className="apple-surface rounded-[18px] overflow-hidden">
           <div
-            className="flex items-center gap-2 px-5 py-4"
+            className="flex items-center gap-2 px-5 py-3.5"
             style={{ borderBottom: '0.5px solid var(--separator)' }}
           >
             <Crown className="h-4 w-4 text-[#FF9500]" aria-hidden="true" />
-            <h2 className="text-[16px] font-semibold">Migliori serate per fatturato</h2>
+            <h2 className="text-[16px] font-semibold">Migliori serate</h2>
           </div>
           <div className="apple-list">
-            {stats.topEvents.map((ev) => {
+            {stats.topEvents.slice(0, 5).map((ev) => {
               const s = summaries.get(ev.id)!;
               const m = getScopedMetrics(ev, s);
               return (
@@ -1343,7 +1093,7 @@ export function DashboardView({
                   <div className="text-right shrink-0 tabular-nums">
                     <div className="text-[14px] font-bold">{formatEur(m.revTotal)}</div>
                     <div className="text-[11px] font-medium" style={{ color: 'var(--status-green)' }}>
-                      Busta {formatEur(m.bustaTotal)}
+                      {formatEur(m.bustaTotal)}
                     </div>
                   </div>
                 </button>
@@ -1354,7 +1104,7 @@ export function DashboardView({
 
         <section className="apple-surface rounded-[18px] overflow-hidden">
           <div
-            className="flex items-center gap-2 px-5 py-4"
+            className="flex items-center gap-2 px-5 py-3.5"
             style={{ borderBottom: '0.5px solid var(--separator)' }}
           >
             <Flame className="h-4 w-4 text-[#FF3B30]" aria-hidden="true" />
@@ -1366,7 +1116,7 @@ export function DashboardView({
                 Nessun tavolo nel filtro attuale
               </div>
             ) : (
-              stats.topTables.map((t, i) => {
+              stats.topTables.slice(0, 5).map((t, i) => {
                 const pr = promoterMap.get(t.promoterId);
                 return (
                   <button
@@ -1389,13 +1139,13 @@ export function DashboardView({
                         </span>
                       </div>
                       <div className="text-[12px] truncate" style={{ color: 'var(--ink-secondary)' }}>
-                        {t.venueName} · {t.eventTitle} ({formatDateShort(t.eventDate)})
+                        {t.venueName} · {formatDateShort(t.eventDate)}
                       </div>
                     </div>
                     <div className="text-right shrink-0 tabular-nums">
                       <div className="text-[14px] font-bold">{formatEur(t.credito)}</div>
                       <div className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-                        {t.px > 0 ? `${t.px} paganti` : 'Extra'}
+                        {t.px > 0 ? `${t.px} px` : 'Extra'}
                       </div>
                     </div>
                   </button>
@@ -1405,22 +1155,6 @@ export function DashboardView({
           </div>
         </section>
       </div>
-
-      {stats.bonusHits > 0 && (
-        <div
-          className="flex items-center gap-2.5 rounded-[14px] px-4 py-3 text-[13px]"
-          style={{
-            backgroundColor: 'var(--status-green-bg)',
-            color: 'var(--status-green)',
-          }}
-        >
-          <Award className="h-4 w-4 shrink-0" aria-hidden="true" />
-          <span>
-            Bonus raggiunto in <strong>{stats.bonusHits} serate</strong> su {stats.eventsCount} (+
-            <strong>{formatEur(stats.bonusTotal)}</strong>).
-          </span>
-        </div>
-      )}
 
       {/* Multi-Filter Apple Sheet / Modal */}
       <AppleModal

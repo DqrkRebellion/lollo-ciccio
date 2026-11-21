@@ -8,7 +8,6 @@ import {
   ChevronUp,
   FileSpreadsheet,
   Layers,
-  Link2,
   Plus,
   Redo2,
   Share2,
@@ -26,6 +25,7 @@ import {
 } from './ui/AppleControls';
 import { StaffMemberPicker, StaffMemberPickerButton } from './ui/StaffMemberPicker';
 import { parseStaffTicketSmsReport } from '../lib/staffCalculations';
+import { isEventActive } from '../lib/events';
 import { formatDateFull, formatEur, formatInt, formatPercent } from '../lib/format';
 import type { EventSummary, FullEvent, ScaricoStatus } from '../types';
 import type {
@@ -216,6 +216,11 @@ export function StaffEventDetail({
   const ownerPrSummary = mainSummary?.byPromoter[ownerPromoterId];
   const ownerMainBusta = ownerPrSummary?.bustaTotal ?? 0;
   const ownerNetMargin = Math.round((ownerMainBusta - staffSummary.totalBusta) * 100) / 100;
+  const eventIsActive = isEventActive(event);
+  const presalesOutOfSync =
+    staffSummary.pxPresales > 0 &&
+    (staffSummary.pxPresales !== (ownerPrSummary?.pxPresales ?? 0) ||
+      Math.abs(staffSummary.presalesRevenue - (ownerPrSummary?.revenuePresales ?? 0)) > 0.01);
 
   const importPreview = useMemo(() => parseStaffTicketSmsReport(importText), [importText]);
 
@@ -423,7 +428,7 @@ export function StaffEventDetail({
             <span className="sm:hidden">Importa</span>
           </button>
 
-          {staffSummary.pxPresales > 0 && (
+          {presalesOutOfSync && (
             <button
               type="button"
               onClick={() => {
@@ -452,17 +457,34 @@ export function StaffEventDetail({
         <h1 className="text-[24px] sm:text-[32px] font-bold tracking-tight truncate">
           {event.title}
         </h1>
-        <p className="mt-0.5 text-[13px] sm:text-[14px]" style={{ color: 'var(--ink-secondary)' }}>
-          {formatDateFull(event.event_date)} · {staffSummary.membersRollup.length} sotto-PR attivi
-        </p>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-[13px] sm:text-[14px]">
+          <span style={{ color: 'var(--ink-secondary)' }}>
+            {formatDateFull(event.event_date)} · {staffSummary.membersRollup.length} PR
+          </span>
+          {eventIsActive && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+              style={{
+                backgroundColor: 'var(--status-green-bg)',
+                color: 'var(--status-green)',
+              }}
+            >
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ backgroundColor: 'var(--status-green)' }}
+              />
+              Attiva · provvisoria
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* Hero Staff Financial Strip (5 KPIs: PX, Mancanti, Buste Staff, TUA BUSTA, TUO MARGINE NETTO) */}
+      {/* Hero Staff Financial Strip (4 clean KPIs) */}
       <section className="apple-surface rounded-[18px] overflow-hidden mb-5">
-        <div className="grid grid-cols-2 lg:grid-cols-5 divide-y lg:divide-y-0 divide-x divide-[var(--separator)]">
+        <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 divide-x divide-[var(--separator)]">
           <div className="p-3.5 sm:p-4 min-w-0">
             <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-              Persone {staffGroup.name}
+              Ingressi {staffGroup.name}
             </span>
             <div className="mt-1 text-[20px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none">
               {formatInt(staffSummary.pxTotal)}
@@ -471,14 +493,14 @@ export function StaffEventDetail({
               </span>
             </div>
             <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-              Preve {formatInt(staffSummary.pxPresales)} · Tavoli {formatInt(staffSummary.pxTables)}
+              {formatInt(staffSummary.pxPresales)} preve · {formatInt(staffSummary.pxTables)} tavoli
             </div>
           </div>
 
           <div className="p-3.5 sm:p-4 min-w-0">
             <div className="flex items-center justify-between gap-1.5">
               <span className="text-[12px] font-medium truncate" style={{ color: 'var(--ink-secondary)' }}>
-                Mancanti staff
+                Mancanti
               </span>
               {staffSummary.totalMancanti > 0.01 && (
                 <button
@@ -494,68 +516,35 @@ export function StaffEventDetail({
             <div className="mt-1.5">
               <MancantiBadge value={staffSummary.totalMancanti} />
             </div>
-            <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-              Dati {formatEur(staffSummary.totalPaidCash)} / {formatEur(staffSummary.totalScarico)}
-            </div>
+            {staffSummary.totalScarico > 0.01 && (
+              <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+                {formatEur(staffSummary.totalPaidCash)} / {formatEur(staffSummary.totalScarico)}
+              </div>
+            )}
           </div>
 
           <div className="p-3.5 sm:p-4 min-w-0">
             <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-              Buste staff
+              {eventIsActive ? 'Buste staff (provv.)' : 'Buste staff'}
             </span>
             <div className="mt-1 text-[20px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none truncate">
               {formatEur(staffSummary.totalBusta, true)}
             </div>
             <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-              Restano{' '}
-              <strong
-                style={{
-                  color:
-                    staffSummary.totalBustaUnpaid > 0.01
-                      ? 'var(--status-orange)'
-                      : 'var(--status-green)',
-                }}
-              >
-                {formatEur(staffSummary.totalBustaUnpaid, true)}
-              </strong>
-            </div>
-          </div>
-
-          <div className="p-3.5 sm:p-4 min-w-0">
-            <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-              Tua busta serata
-            </span>
-            <div
-              className="mt-1 text-[20px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none truncate"
-              style={{ color: 'var(--accent)' }}
-            >
-              {formatEur(ownerMainBusta, true)}
-            </div>
-            <div
-              className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] sm:text-[12px] tabular-nums"
-              style={{ color: 'var(--ink-secondary)' }}
-            >
-              {ownerPrSummary ? (
+              {staffSummary.totalBustaUnpaid > 0.01 ? (
                 <>
-                  <span className="whitespace-nowrap">
-                    Preve {formatEur(ownerPrSummary.bustaPresales)}
-                  </span>
-                  <span className="whitespace-nowrap">
-                    Tav. {formatEur(ownerPrSummary.bustaTables)}
-                  </span>
-                  {ownerPrSummary.bustaBonusShare > 0 && (
-                    <span className="whitespace-nowrap" style={{ color: 'var(--status-green)' }}>
-                      +{formatEur(ownerPrSummary.bustaBonusShare)} bonus
-                    </span>
-                  )}
+                  Da pagare{' '}
+                  <strong style={{ color: eventIsActive ? 'var(--status-orange)' : 'var(--accent)' }}>
+                    {formatEur(staffSummary.totalBustaUnpaid, true)}
+                  </strong>
                 </>
               ) : (
-                <span>Dal foglio Lollo &amp; Ciccio</span>
+                <span style={{ color: 'var(--status-green)' }}>Saldate</span>
               )}
             </div>
           </div>
 
-          <div className="p-3.5 sm:p-4 col-span-2 lg:col-span-1 min-w-0">
+          <div className="p-3.5 sm:p-4 min-w-0">
             <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Tuo margine netto
             </span>
@@ -567,8 +556,9 @@ export function StaffEventDetail({
             >
               {formatEur(ownerNetMargin, true)}
             </div>
-            <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-              Tua busta − Buste staff
+            <div className="mt-1.5 text-[12px] tabular-nums truncate" style={{ color: 'var(--ink-secondary)' }}>
+              Tua busta{' '}
+              <strong style={{ color: 'var(--accent)' }}>{formatEur(ownerMainBusta, true)}</strong>
             </div>
           </div>
         </div>
@@ -1117,20 +1107,6 @@ export function StaffEventDetail({
       {/* ============ SUB-VIEW 3: TAVOLI STAFF (W..AH, COLLEGATI A LOLLO & CICCIO) ============ */}
       {subView === 'tables' && (
         <>
-          <div
-            className="mb-3 flex items-center gap-2 rounded-[11px] px-3.5 py-2 text-[12px]"
-            style={{
-              backgroundColor: 'var(--bg-surface-secondary)',
-              color: 'var(--ink-secondary)',
-            }}
-          >
-            <Link2 className="h-3.5 w-3.5 shrink-0" style={{ color: 'var(--accent)' }} aria-hidden="true" />
-            <span>
-              Tavoli collegati a <strong>Lollo &amp; Ciccio</strong>: ogni modifica si aggiorna su
-              entrambe le viste; se un tavolo è <strong>No scarico</strong> il PR non deve
-              consegnarti contanti.
-            </span>
-          </div>
 
           {/* Mobile Tavoli Cards */}
           <div className="md:hidden space-y-2.5">

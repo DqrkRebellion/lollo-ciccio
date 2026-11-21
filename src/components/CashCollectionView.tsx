@@ -8,7 +8,6 @@ import {
   CreditCard,
   History,
   Landmark,
-  Plus,
   RotateCcw,
   Search,
   Trash2,
@@ -20,6 +19,7 @@ import { toast } from 'sonner';
 import { AppleModal, MancantiBadge, SegmentedControl } from './ui/AppleControls';
 import { StaffMemberPicker } from './ui/StaffMemberPicker';
 import { round2 } from '../lib/calculations';
+import { splitActiveAndPastEvents } from '../lib/events';
 import { formatDateDayMonth, formatDateShort, formatEur, formatInt } from '../lib/format';
 import type { useStaffData } from '../hooks/useStaffData';
 import type { FullEvent, Venue } from '../types';
@@ -132,23 +132,36 @@ export function CashCollectionView({
     return m;
   }, [venues]);
 
-  // Pick smart default event (selected -> latest with open staff cash -> latest with staff data -> latest overall)
+  const { active: activeEventsList, past: pastEventsList } = useMemo(
+    () => splitActiveAndPastEvents(events),
+    [events]
+  );
+
+  // Pick smart default event (selected -> active with open cash -> latest with open staff cash -> active -> latest)
   const activeEvent = useMemo(() => {
     if (selectedEventId && eventsById.has(selectedEventId)) {
       return eventsById.get(selectedEventId)!;
     }
+    const activeWithMancanti = activeEventsList.find((e) => {
+      const ss = staffData.summariesByEvent.get(e.id);
+      return ss && ss.totalMancanti > 0.01;
+    });
+    if (activeWithMancanti) return activeWithMancanti;
+
     const latestWithMancanti = events.find((e) => {
       const ss = staffData.summariesByEvent.get(e.id);
       return ss && ss.totalMancanti > 0.01;
     });
     if (latestWithMancanti) return latestWithMancanti;
 
+    if (activeEventsList[0]) return activeEventsList[0];
+
     const latestWithStaff = events.find((e) => {
       const ss = staffData.summariesByEvent.get(e.id);
       return ss && (ss.presales.length > 0 || ss.tables.length > 0);
     });
     return latestWithStaff || events[0] || null;
-  }, [selectedEventId, eventsById, events, staffData.summariesByEvent]);
+  }, [selectedEventId, eventsById, activeEventsList, events, staffData.summariesByEvent]);
 
   const activeSummary = useMemo(
     () => (activeEvent ? staffData.getEventSummary(activeEvent.id) : null),
@@ -400,22 +413,17 @@ export function CashCollectionView({
     <div className="mx-auto w-full max-w-[1040px] px-4 sm:px-6 lg:px-8 pt-4 pb-28 lg:pb-12 space-y-5">
       {/* Header + Event Selector */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h1 className="text-[26px] sm:text-[32px] font-bold tracking-tight">Raccolta soldi</h1>
-            <span
-              className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-              style={{
-                backgroundColor: 'var(--accent-subtle)',
-                color: 'var(--accent)',
-              }}
-            >
-              {staffData.group.name}
-            </span>
-          </div>
-          <p className="mt-0.5 text-[13px] sm:text-[14px]" style={{ color: 'var(--ink-secondary)' }}>
-            Tocca un PR per registrare al volo i contanti consegnati durante la serata.
-          </p>
+        <div className="flex items-center gap-2 min-w-0">
+          <h1 className="text-[26px] sm:text-[32px] font-bold tracking-tight">Raccolta soldi</h1>
+          <span
+            className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+            style={{
+              backgroundColor: 'var(--accent-subtle)',
+              color: 'var(--accent)',
+            }}
+          >
+            {staffData.group.name}
+          </span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -466,21 +474,44 @@ export function CashCollectionView({
             onChange={(e) => onSelectEvent(e.target.value)}
             className="apple-input flex-1 w-full max-w-full min-w-0 overflow-hidden text-ellipsis rounded-[10px] px-3 py-2 text-[16px] md:text-[14px] font-semibold cursor-pointer"
           >
-            {events.map((ev) => {
-              const ss = staffData.summariesByEvent.get(ev.id);
-              const manc = ss?.totalMancanti ?? 0;
-              const tag =
-                manc > 0.01
-                  ? ` · Mancano ${formatEur(manc)}`
-                  : ss && ss.pxTotal > 0
-                    ? ' · In pari'
-                    : '';
-              return (
-                <option key={ev.id} value={ev.id}>
-                  {formatDateDayMonth(ev.event_date)} — {ev.title} ({ev.venue_name}){tag}
-                </option>
-              );
-            })}
+            {activeEventsList.length > 0 && (
+              <optgroup label="Serate attive">
+                {activeEventsList.map((ev) => {
+                  const ss = staffData.summariesByEvent.get(ev.id);
+                  const manc = ss?.totalMancanti ?? 0;
+                  const tag =
+                    manc > 0.01
+                      ? ` · Mancano ${formatEur(manc)}`
+                      : ss && ss.pxTotal > 0
+                        ? ' · In pari'
+                        : '';
+                  return (
+                    <option key={ev.id} value={ev.id}>
+                      {formatDateDayMonth(ev.event_date)} — {ev.title} ({ev.venue_name}){tag}
+                    </option>
+                  );
+                })}
+              </optgroup>
+            )}
+            {pastEventsList.length > 0 && (
+              <optgroup label="Serate passate">
+                {pastEventsList.map((ev) => {
+                  const ss = staffData.summariesByEvent.get(ev.id);
+                  const manc = ss?.totalMancanti ?? 0;
+                  const tag =
+                    manc > 0.01
+                      ? ` · Mancano ${formatEur(manc)}`
+                      : ss && ss.pxTotal > 0
+                        ? ' · In pari'
+                        : '';
+                  return (
+                    <option key={ev.id} value={ev.id}>
+                      {formatDateDayMonth(ev.event_date)} — {ev.title} ({ev.venue_name}){tag}
+                    </option>
+                  );
+                })}
+              </optgroup>
+            )}
           </select>
         </div>
 
@@ -544,9 +575,6 @@ export function CashCollectionView({
             </span>
             <div className="mt-1 text-[15px] min-[390px]:text-[17px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none truncate">
               {formatEur(activeSummary.totalScarico)}
-            </div>
-            <div className="mt-1 text-[10px] sm:text-[11px] tabular-nums truncate" style={{ color: 'var(--ink-tertiary)' }}>
-              Esclusi no-scarico
             </div>
           </div>
         </div>
@@ -784,16 +812,6 @@ export function CashCollectionView({
                           >
                             {formatEur(r.mancantiTotal)}
                           </div>
-                          <span
-                            className="mt-1 inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                            style={{
-                              backgroundColor: 'var(--accent-subtle)',
-                              color: 'var(--accent)',
-                            }}
-                          >
-                            <Plus className="h-2.5 w-2.5" aria-hidden="true" />
-                            Incassa
-                          </span>
                         </>
                       ) : overpaid ? (
                         <>

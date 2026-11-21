@@ -8,7 +8,6 @@ import {
   ChevronDown,
   ChevronUp,
   Layers,
-  Lock,
   Pencil,
   Plus,
   Search,
@@ -32,11 +31,11 @@ import {
   DEFAULT_TABLE_TIERS,
   resolveMemberRules,
 } from '../lib/staffCalculations';
+import { getActiveEventCutoffIso, isEventActive, splitActiveAndPastEvents } from '../lib/events';
 import {
   formatDateDayMonth,
   formatEur,
   formatInt,
-  formatMonthYear,
   formatPercent,
 } from '../lib/format';
 import type { useStaffData } from '../hooks/useStaffData';
@@ -49,7 +48,7 @@ import type {
 } from '../types/staff';
 
 type WorkspaceSection = 'events' | 'ledger' | 'team';
-type EventListFilter = 'ALL' | 'WITH_DATA' | 'OPEN_MANCANTI' | 'UNPAID_BUSTA';
+type EventListFilter = 'ALL' | 'OPEN_MANCANTI' | 'UNPAID_BUSTA';
 type LedgerMode = 'by_pr' | 'by_event';
 type LedgerFilter = 'OPEN' | 'MANCANTI' | 'BUSTE' | 'ALL';
 
@@ -284,8 +283,6 @@ export function StaffWorkspace({
     const q = search.trim().toLowerCase();
     return events.filter((ev) => {
       const ss = staffData.summariesByEvent.get(ev.id);
-      const hasData = Boolean(ss && (ss.presales.length > 0 || ss.tables.length > 0));
-      if (listFilter === 'WITH_DATA' && !hasData) return false;
       if (listFilter === 'OPEN_MANCANTI' && (ss?.totalMancanti ?? 0) <= 0.01) return false;
       if (listFilter === 'UNPAID_BUSTA' && (ss?.totalBustaUnpaid ?? 0) <= 0.01) return false;
 
@@ -306,20 +303,10 @@ export function StaffWorkspace({
     });
   }, [events, staffData.summariesByEvent, search, listFilter]);
 
-  const groupedByMonth = useMemo(() => {
-    const groups: { monthLabel: string; items: FullEvent[] }[] = [];
-    let currentLabel = '';
-    for (const ev of filteredEvents) {
-      const lbl = formatMonthYear(ev.event_date);
-      if (lbl !== currentLabel) {
-        currentLabel = lbl;
-        groups.push({ monthLabel: lbl, items: [ev] });
-      } else {
-        groups[groups.length - 1].items.push(ev);
-      }
-    }
-    return groups;
-  }, [filteredEvents]);
+  const { active: activeEvents, past: pastEvents } = useMemo(
+    () => splitActiveAndPastEvents(filteredEvents),
+    [filteredEvents]
+  );
 
   // Open focused detail ONLY when an event is explicitly selected (zero distracting side list!)
   const activeEvent = useMemo(
@@ -330,15 +317,18 @@ export function StaffWorkspace({
   const activeStaffSummary = activeEvent ? staffData.getEventSummary(activeEvent.id) : null;
   const activeMainSummary = activeEvent ? mainSummaries.get(activeEvent.id) : undefined;
 
-  // Cross-event Ledger & All-Time Sub-PR Stats
+  // Cross-event Ledger & All-Time Sub-PR Stats (explicitly separating Active provisional vs Past final)
   const crossEventAnalytics = useMemo(() => {
+    const cutoffIso = getActiveEventCutoffIso();
+
     let totalMancanti = 0;
     let totalBustaUnpaid = 0;
+    let totalBustaUnpaidPast = 0;
+    let totalBustaUnpaidActive = 0;
     let totalBustaPaid = 0;
-    let totalPx = 0;
-    let totalFatturato = 0;
     let openMancantiEventsCount = 0;
-    let openBusteEventsCount = 0;
+    let openBustePastEventsCount = 0;
+    let openBusteActiveEventsCount = 0;
 
     interface PrAggregate {
       key: string;
@@ -356,28 +346,36 @@ export function StaffWorkspace({
       mancantiTotal: number;
       bustaTotal: number;
       bustaUnpaid: number;
+      bustaUnpaidPast: number;
+      bustaUnpaidActive: number;
       bustaPaid: number;
-      eventEntries: { event: FullEvent; rollup: StaffMemberEventRollup }[];
+      eventEntries: { event: FullEvent; isActive: boolean; rollup: StaffMemberEventRollup }[];
     }
 
     const byPr = new Map<string, PrAggregate>();
     const eventLedgerRows: {
       event: FullEvent;
+      isActive: boolean;
       summary: NonNullable<ReturnType<typeof staffData.summariesByEvent.get>>;
     }[] = [];
 
     for (const ev of events) {
       const ss = staffData.summariesByEvent.get(ev.id);
       if (!ss || (ss.presales.length === 0 && ss.tables.length === 0)) continue;
+      const evActive = isEventActive(ev, cutoffIso);
 
-      eventLedgerRows.push({ event: ev, summary: ss });
+      eventLedgerRows.push({ event: ev, isActive: evActive, summary: ss });
       totalMancanti += ss.totalMancanti;
       totalBustaUnpaid += ss.totalBustaUnpaid;
+      if (evActive) {
+        totalBustaUnpaidActive += ss.totalBustaUnpaid;
+        if (ss.totalBustaUnpaid > 0.01) openBusteActiveEventsCount += 1;
+      } else {
+        totalBustaUnpaidPast += ss.totalBustaUnpaid;
+        if (ss.totalBustaUnpaid > 0.01) openBustePastEventsCount += 1;
+      }
       totalBustaPaid += ss.totalBustaPaid;
-      totalPx += ss.pxTotal;
-      totalFatturato += ss.presalesRevenue + ss.tablesCredito;
       if (ss.totalMancanti > 0.01) openMancantiEventsCount += 1;
-      if (ss.totalBustaUnpaid > 0.01) openBusteEventsCount += 1;
 
       for (const r of ss.membersRollup) {
         let agg = byPr.get(r.memberKey);
@@ -398,6 +396,8 @@ export function StaffWorkspace({
             mancantiTotal: 0,
             bustaTotal: 0,
             bustaUnpaid: 0,
+            bustaUnpaidPast: 0,
+            bustaUnpaidActive: 0,
             bustaPaid: 0,
             eventEntries: [],
           };
@@ -412,14 +412,22 @@ export function StaffWorkspace({
         agg.mancantiTotal = Math.round((agg.mancantiTotal + r.mancantiTotal) * 100) / 100;
         agg.bustaTotal = Math.round((agg.bustaTotal + r.bustaTotal) * 100) / 100;
         agg.bustaUnpaid = Math.round((agg.bustaUnpaid + r.bustaUnpaidAmount) * 100) / 100;
+        if (evActive) {
+          agg.bustaUnpaidActive =
+            Math.round((agg.bustaUnpaidActive + r.bustaUnpaidAmount) * 100) / 100;
+        } else {
+          agg.bustaUnpaidPast =
+            Math.round((agg.bustaUnpaidPast + r.bustaUnpaidAmount) * 100) / 100;
+        }
         agg.bustaPaid = Math.round((agg.bustaPaid + r.bustaPaidAmount) * 100) / 100;
-        agg.eventEntries.push({ event: ev, rollup: r });
+        agg.eventEntries.push({ event: ev, isActive: evActive, rollup: r });
       }
     }
 
     const prList = Array.from(byPr.values()).sort(
       (a, b) =>
         b.mancantiTotal - a.mancantiTotal ||
+        b.bustaUnpaidPast - a.bustaUnpaidPast ||
         b.bustaUnpaid - a.bustaUnpaid ||
         b.pxTotal - a.pxTotal
     );
@@ -432,11 +440,13 @@ export function StaffWorkspace({
     return {
       totalMancanti: Math.round(totalMancanti * 100) / 100,
       totalBustaUnpaid: Math.round(totalBustaUnpaid * 100) / 100,
+      totalBustaUnpaidPast: Math.round(totalBustaUnpaidPast * 100) / 100,
+      totalBustaUnpaidActive: Math.round(totalBustaUnpaidActive * 100) / 100,
       totalBustaPaid: Math.round(totalBustaPaid * 100) / 100,
-      totalPx,
-      totalFatturato: Math.round(totalFatturato * 100) / 100,
       openMancantiEventsCount,
-      openBusteEventsCount,
+      openBustePastEventsCount,
+      openBusteActiveEventsCount,
+      openBusteEventsCount: openBustePastEventsCount + openBusteActiveEventsCount,
       prList,
       eventLedgerRows,
       statsByMemberId,
@@ -610,6 +620,127 @@ export function StaffWorkspace({
   const openPendingCount =
     crossEventAnalytics.openMancantiEventsCount + crossEventAnalytics.openBusteEventsCount;
 
+  const renderStaffEventCard = (ev: FullEvent, isActive: boolean) => {
+    const ss = staffData.summariesByEvent.get(ev.id);
+    const ms = mainSummaries.get(ev.id);
+    const hasData = Boolean(ss && (ss.presales.length > 0 || ss.tables.length > 0));
+    const venueColor = venueColorMap.get(ev.venue_name) || '#0071E3';
+    const hasMancanti = (ss?.totalMancanti ?? 0) > 0.01;
+    const hasUnpaidBusta = (ss?.totalBustaUnpaid ?? 0) > 0.01;
+    const ownerBusta = ms?.byPromoter[ownerPromoterId]?.bustaTotal ?? 0;
+    const staffBusta = ss?.totalBusta ?? 0;
+    const ownerNet = Math.round((ownerBusta - staffBusta) * 100) / 100;
+
+    return (
+      <button
+        key={ev.id}
+        type="button"
+        onClick={() => onSelectEvent(ev.id)}
+        className="apple-card px-4 py-3.5 text-left apple-press cursor-pointer hover:ring-1 hover:ring-[var(--accent)] transition-[box-shadow,transform]"
+        style={{
+          opacity: hasData || isActive ? 1 : 0.72,
+          boxShadow: isActive
+            ? 'var(--shadow-card), inset 3px 0 0 var(--accent)'
+            : undefined,
+        }}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex items-center gap-2">
+            <span
+              className="h-2.5 w-2.5 rounded-full shrink-0"
+              style={{ backgroundColor: venueColor }}
+            />
+            <span className="text-[15px] sm:text-[16px] font-semibold truncate">{ev.title}</span>
+          </div>
+
+          <div className="shrink-0 tabular-nums text-right">
+            {hasData && ss ? (
+              <span className="text-[15px] font-bold">{formatInt(ss.pxTotal)} px</span>
+            ) : (
+              <span className="text-[12px]" style={{ color: 'var(--ink-tertiary)' }}>
+                Vuota
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-1.5 flex items-center justify-between gap-2 text-[12px] tabular-nums">
+          <div
+            className="min-w-0 flex items-center gap-1.5 truncate"
+            style={{ color: 'var(--ink-secondary)' }}
+          >
+            <span>{formatDateDayMonth(ev.event_date)}</span>
+            <span>·</span>
+            <span className="truncate">{ev.venue_name}</span>
+            {hasData && ss && (
+              <>
+                <span>·</span>
+                <span>{ss.membersRollup.length} PR</span>
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            {hasData && ss ? (
+              <>
+                {!hasMancanti && !hasUnpaidBusta && (
+                  <span
+                    className="inline-flex items-center gap-0.5 text-[11px] font-semibold"
+                    style={{ color: 'var(--status-green)' }}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    Chiusa
+                  </span>
+                )}
+                {hasUnpaidBusta && (
+                  <span
+                    className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                    style={{
+                      backgroundColor: isActive ? 'var(--status-orange-bg)' : 'var(--accent-subtle)',
+                      color: isActive ? 'var(--status-orange)' : 'var(--accent)',
+                    }}
+                  >
+                    {formatEur(ss.totalBustaUnpaid)}
+                  </span>
+                )}
+                {hasMancanti && (
+                  <span
+                    className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                    style={{
+                      backgroundColor: 'var(--status-red-bg)',
+                      color: 'var(--status-red)',
+                    }}
+                  >
+                    -{formatEur(ss.totalMancanti)}
+                  </span>
+                )}
+              </>
+            ) : null}
+          </div>
+        </div>
+
+        {hasData && (ownerBusta > 0.01 || staffBusta > 0.01) && (
+          <div
+            className="mt-2 pt-2 flex items-center justify-between gap-2 text-[12px] tabular-nums"
+            style={{ borderTop: '0.5px solid var(--separator)' }}
+          >
+            <span style={{ color: 'var(--ink-secondary)' }}>
+              Staff {formatEur(staffBusta, true)}
+            </span>
+            <span
+              className="font-semibold"
+              style={{
+                color: ownerNet >= 0 ? 'var(--status-green)' : 'var(--status-red)',
+              }}
+            >
+              Netto {formatEur(ownerNet, true)}
+            </span>
+          </div>
+        )}
+      </button>
+    );
+  };
+
   return (
     <div className="min-h-[calc(100dvh-56px)] lg:min-h-dvh flex flex-col">
       {/* Top Personal Staff Sub-Navigation Bar */}
@@ -629,29 +760,9 @@ export function StaffWorkspace({
           >
             <Users className="h-4 w-4" aria-hidden="true" />
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="text-[16px] font-bold tracking-tight truncate">
-                Staff {staffData.group.name}
-              </h1>
-              <span
-                className="hidden sm:inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
-                style={{
-                  backgroundColor: 'var(--bg-surface-secondary)',
-                  color: 'var(--ink-secondary)',
-                }}
-              >
-                <Lock className="h-2.5 w-2.5" aria-hidden="true" />
-                Privato
-              </span>
-            </div>
-            <p className="text-[11px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-              {staffData.members.filter((m) => m.is_active && !m.is_self).length} sotto-PR ·{' '}
-              {staffData.group.sum_tables_per_pr
-                ? 'Somma tavoli per PR attiva'
-                : 'Scaglioni per singolo tavolo'}
-            </p>
-          </div>
+          <h1 className="text-[16px] font-bold tracking-tight truncate">
+            Staff {staffData.group.name}
+          </h1>
         </div>
 
         <SegmentedControl
@@ -676,7 +787,7 @@ export function StaffWorkspace({
         />
       </div>
 
-      {/* SECTION 1: SERATE (Focused Full-Screen Event OR Clean Full-Width Directory) */}
+      {/* SECTION 1: SERATE (Exclusively Active vs Past) */}
       {section === 'events' &&
         (activeEvent && activeStaffSummary ? (
           <div className="flex-1 min-w-0">
@@ -723,9 +834,9 @@ export function StaffWorkspace({
             />
           </div>
         ) : (
-          <div className="max-w-[1040px] w-full mx-auto px-4 sm:px-6 lg:px-8 pt-5 pb-28 lg:pb-12 space-y-5">
+          <div className="max-w-[1000px] w-full mx-auto px-4 sm:px-6 lg:px-8 pt-5 pb-28 lg:pb-12 space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-              <div className="relative flex-1 sm:max-w-[360px]">
+              <div className="relative flex-1 sm:max-w-[340px]">
                 <Search
                   className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4"
                   style={{ color: 'var(--ink-tertiary)' }}
@@ -756,7 +867,6 @@ export function StaffWorkspace({
                 {(
                   [
                     { id: 'ALL', label: 'Tutte' },
-                    { id: 'WITH_DATA', label: 'Con dati' },
                     { id: 'OPEN_MANCANTI', label: 'Mancanti' },
                     { id: 'UNPAID_BUSTA', label: 'Buste' },
                   ] as const
@@ -797,7 +907,7 @@ export function StaffWorkspace({
               </div>
             </div>
 
-            {groupedByMonth.length === 0 ? (
+            {activeEvents.length === 0 && pastEvents.length === 0 ? (
               <div className="apple-card p-12 text-center">
                 <CalendarDays
                   className="h-9 w-9 mx-auto mb-2.5"
@@ -806,251 +916,127 @@ export function StaffWorkspace({
                 />
                 <p className="text-[16px] font-semibold">Nessuna serata trovata</p>
                 <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-secondary)' }}>
-                  Cambia filtro o seleziona “Tutte” per aprire una serata staff.
+                  Cambia filtro o seleziona “Tutte”.
                 </p>
               </div>
             ) : (
               <div className="space-y-6">
-                {groupedByMonth.map((grp) => (
-                  <section key={grp.monthLabel} className="space-y-2.5">
-                    <h2
-                      className="px-1 text-[13px] font-semibold"
-                      style={{ color: 'var(--ink-secondary)' }}
-                    >
-                      {grp.monthLabel}
-                    </h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {grp.items.map((ev) => {
-                        const ss = staffData.summariesByEvent.get(ev.id);
-                        const ms = mainSummaries.get(ev.id);
-                        const hasData = Boolean(
-                          ss && (ss.presales.length > 0 || ss.tables.length > 0)
-                        );
-                        const venueColor = venueColorMap.get(ev.venue_name) || '#0071E3';
-                        const hasMancanti = (ss?.totalMancanti ?? 0) > 0.01;
-                        const hasUnpaidBusta = (ss?.totalBustaUnpaid ?? 0) > 0.01;
-                        const ownerBusta = ms?.byPromoter[ownerPromoterId]?.bustaTotal ?? 0;
-                        const staffBusta = ss?.totalBusta ?? 0;
-                        const ownerNet = Math.round((ownerBusta - staffBusta) * 100) / 100;
-
-                        return (
-                          <button
-                            key={ev.id}
-                            type="button"
-                            onClick={() => onSelectEvent(ev.id)}
-                            className="apple-card p-4 text-left apple-press cursor-pointer hover:ring-1 hover:ring-[var(--accent)] transition-[box-shadow,transform]"
-                            style={{ opacity: hasData ? 1 : 0.76 }}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
-                                  <span
-                                    className="h-2.5 w-2.5 rounded-full shrink-0"
-                                    style={{ backgroundColor: venueColor }}
-                                  />
-                                  <span className="text-[16px] font-semibold truncate">
-                                    {ev.title}
-                                  </span>
-                                </div>
-                                <div
-                                  className="mt-0.5 flex items-center gap-1.5 text-[12px] truncate"
-                                  style={{ color: 'var(--ink-secondary)' }}
-                                >
-                                  <span className="tabular-nums">
-                                    {formatDateDayMonth(ev.event_date)}
-                                  </span>
-                                  <span>·</span>
-                                  <span className="truncate">{ev.venue_name}</span>
-                                  {hasData && ss && (
-                                    <>
-                                      <span>·</span>
-                                      <span className="tabular-nums">
-                                        {ss.membersRollup.length} PR · {ss.tables.length} tav.
-                                      </span>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="text-right shrink-0 tabular-nums">
-                                {hasData && ss ? (
-                                  <>
-                                    <div className="text-[15px] font-bold">
-                                      {formatInt(ss.pxTotal)} px
-                                    </div>
-                                    <div
-                                      className="text-[11px]"
-                                      style={{ color: 'var(--ink-secondary)' }}
-                                    >
-                                      Staff {formatEur(staffBusta, true)}
-                                    </div>
-                                  </>
-                                ) : (
-                                  <span
-                                    className="rounded-full px-2 py-0.5 text-[11px] font-medium"
-                                    style={{
-                                      backgroundColor: 'var(--bg-surface-secondary)',
-                                      color: 'var(--ink-tertiary)',
-                                    }}
-                                  >
-                                    Vuota
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            <div
-                              className="mt-3 pt-2.5 flex flex-wrap items-center justify-between gap-2 text-[12px] tabular-nums"
-                              style={{ borderTop: '0.5px solid var(--separator)' }}
-                            >
-                              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
-                                <span className="font-semibold" style={{ color: 'var(--accent)' }}>
-                                  Tua busta {formatEur(ownerBusta, true)}
-                                </span>
-                                {hasData && (
-                                  <span
-                                    className="font-semibold"
-                                    style={{
-                                      color:
-                                        ownerNet >= 0
-                                          ? 'var(--status-green)'
-                                          : 'var(--status-red)',
-                                    }}
-                                  >
-                                    Netto {formatEur(ownerNet, true)}
-                                  </span>
-                                )}
-                              </div>
-
-                              {hasData && ss && (
-                                <div className="flex items-center gap-1.5">
-                                  {!hasMancanti && !hasUnpaidBusta && (
-                                    <span
-                                      className="inline-flex items-center gap-0.5 text-[11px] font-semibold"
-                                      style={{ color: 'var(--status-green)' }}
-                                    >
-                                      <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-                                      Chiusa
-                                    </span>
-                                  )}
-                                  {hasUnpaidBusta && (
-                                    <span
-                                      className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                                      style={{
-                                        backgroundColor: 'var(--accent-subtle)',
-                                        color: 'var(--accent)',
-                                      }}
-                                    >
-                                      Buste {formatEur(ss.totalBustaUnpaid)}
-                                    </span>
-                                  )}
-                                  {hasMancanti && (
-                                    <span
-                                      className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                                      style={{
-                                        backgroundColor: 'var(--status-red-bg)',
-                                        color: 'var(--status-red)',
-                                      }}
-                                    >
-                                      -{formatEur(ss.totalMancanti)}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })}
+                {activeEvents.length > 0 && (
+                  <section className="space-y-2.5">
+                    <div className="flex items-center gap-2 px-1">
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ backgroundColor: 'var(--status-green)' }}
+                        aria-hidden="true"
+                      />
+                      <h2 className="text-[14px] font-semibold">
+                        Serate attive ({activeEvents.length})
+                      </h2>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                      {activeEvents.map((ev) => renderStaffEventCard(ev, true))}
                     </div>
                   </section>
-                ))}
+                )}
+
+                {pastEvents.length > 0 && (
+                  <section className="space-y-2.5">
+                    <h2
+                      className="px-1 text-[14px] font-semibold"
+                      style={{ color: 'var(--ink-secondary)' }}
+                    >
+                      Serate passate ({pastEvents.length})
+                    </h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                      {pastEvents.map((ev) => renderStaffEventCard(ev, false))}
+                    </div>
+                  </section>
+                )}
               </div>
             )}
           </div>
         ))}
 
-      {/* SECTION 2: SALDI & BUSTE STAFF (Cross-Event Ledger) */}
+      {/* SECTION 2: SALDI & BUSTE STAFF (Cross-Event Ledger with Active vs Past distinction) */}
       {section === 'ledger' && (
-        <div className="max-w-[1060px] w-full mx-auto px-4 sm:px-6 pt-5 pb-28 lg:pb-12 space-y-5">
-          {/* Hero KPI Strip */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="apple-card p-3.5 sm:p-4 min-w-0">
-              <div className="text-[12px] font-medium truncate" style={{ color: 'var(--ink-secondary)' }}>
-                Mancanti Staff
+        <div className="max-w-[1000px] w-full mx-auto px-4 sm:px-6 pt-5 pb-28 lg:pb-12 space-y-5">
+          {/* Unified 3-Column Overview Strip */}
+          <section className="apple-surface rounded-[18px] overflow-hidden">
+            <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[var(--separator)]">
+              <div className="p-4 sm:p-5 min-w-0">
+                <div className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+                  Mancanti Staff
+                </div>
+                <div
+                  className="mt-1 text-[24px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none"
+                  style={{
+                    color:
+                      crossEventAnalytics.totalMancanti > 0.01
+                        ? 'var(--status-red)'
+                        : 'var(--status-green)',
+                  }}
+                >
+                  {formatEur(crossEventAnalytics.totalMancanti)}
+                </div>
+                <div className="mt-1.5 text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
+                  {crossEventAnalytics.openMancantiEventsCount === 0
+                    ? 'Tutti in pari'
+                    : `${crossEventAnalytics.openMancantiEventsCount} serate aperte`}
+                </div>
               </div>
-              <div
-                className="mt-1 text-[20px] sm:text-[26px] font-bold tracking-tight tabular-nums truncate"
-                style={{
-                  color:
-                    crossEventAnalytics.totalMancanti > 0.01
-                      ? 'var(--status-red)'
-                      : 'var(--status-green)',
-                }}
-              >
-                {formatEur(crossEventAnalytics.totalMancanti)}
-              </div>
-              <div className="mt-1 text-[12px]" style={{ color: 'var(--ink-tertiary)' }}>
-                {crossEventAnalytics.openMancantiEventsCount === 0
-                  ? 'Tutti i contanti consegnati'
-                  : `${crossEventAnalytics.openMancantiEventsCount} serate aperte`}
-              </div>
-            </div>
 
-            <div className="apple-card p-3.5 sm:p-4 min-w-0">
-              <div className="text-[12px] font-medium truncate" style={{ color: 'var(--ink-secondary)' }}>
-                Buste da pagare
+              <div className="p-4 sm:p-5 min-w-0">
+                <div className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+                  Buste definitive ({crossEventAnalytics.openBustePastEventsCount} passate)
+                </div>
+                <div
+                  className="mt-1 text-[24px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none"
+                  style={{
+                    color:
+                      crossEventAnalytics.totalBustaUnpaidPast > 0.01
+                        ? 'var(--accent)'
+                        : 'var(--status-green)',
+                  }}
+                >
+                  {formatEur(crossEventAnalytics.totalBustaUnpaidPast, true)}
+                </div>
+                <div className="mt-1.5 text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
+                  Pronte da pagare
+                </div>
               </div>
-              <div
-                className="mt-1 text-[20px] sm:text-[26px] font-bold tracking-tight tabular-nums truncate"
-                style={{
-                  color:
-                    crossEventAnalytics.totalBustaUnpaid > 0.01
-                      ? 'var(--accent)'
-                      : 'var(--status-green)',
-                }}
-              >
-                {formatEur(crossEventAnalytics.totalBustaUnpaid, true)}
-              </div>
-              <div className="mt-1 text-[12px]" style={{ color: 'var(--ink-tertiary)' }}>
-                {crossEventAnalytics.openBusteEventsCount === 0
-                  ? 'Tutte le buste saldate'
-                  : `${crossEventAnalytics.openBusteEventsCount} serate da pagare`}
-              </div>
-            </div>
 
-            <div className="apple-card p-3.5 sm:p-4 min-w-0">
-              <div className="text-[12px] font-medium truncate" style={{ color: 'var(--ink-secondary)' }}>
-                Buste già pagate
-              </div>
-              <div
-                className="mt-1 text-[20px] sm:text-[26px] font-bold tracking-tight tabular-nums truncate"
-                style={{ color: 'var(--status-green)' }}
-              >
-                {formatEur(crossEventAnalytics.totalBustaPaid, true)}
-              </div>
-              <div className="mt-1 text-[12px]" style={{ color: 'var(--ink-tertiary)' }}>
-                Storico {staffData.group.name}
+              <div className="p-4 sm:p-5 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  {crossEventAnalytics.openBusteActiveEventsCount > 0 && (
+                    <span
+                      className="h-2 w-2 rounded-full shrink-0"
+                      style={{ backgroundColor: 'var(--status-orange)' }}
+                      aria-hidden="true"
+                    />
+                  )}
+                  <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+                    Buste in corso ({crossEventAnalytics.openBusteActiveEventsCount} attive)
+                  </span>
+                </div>
+                <div
+                  className="mt-1 text-[24px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none"
+                  style={{
+                    color:
+                      crossEventAnalytics.totalBustaUnpaidActive > 0.01
+                        ? 'var(--status-orange)'
+                        : 'var(--ink-tertiary)',
+                  }}
+                >
+                  {formatEur(crossEventAnalytics.totalBustaUnpaidActive, true)}
+                </div>
+                <div className="mt-1.5 text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
+                  {crossEventAnalytics.openBusteActiveEventsCount > 0
+                    ? 'Provvisorie · possono variare'
+                    : 'Nessuna serata attiva'}
+                </div>
               </div>
             </div>
-
-            <div className="apple-card p-3.5 sm:p-4 min-w-0">
-              <div className="text-[12px] font-medium truncate" style={{ color: 'var(--ink-secondary)' }}>
-                Volume Staff totale
-              </div>
-              <div className="mt-1 text-[20px] sm:text-[26px] font-bold tracking-tight tabular-nums truncate">
-                {formatInt(crossEventAnalytics.totalPx)}{' '}
-                <span className="text-[14px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-                  px
-                </span>
-              </div>
-              <div
-                className="mt-1 text-[12px] tabular-nums truncate"
-                style={{ color: 'var(--ink-tertiary)' }}
-              >
-                Fatt. {formatEur(crossEventAnalytics.totalFatturato)}
-              </div>
-            </div>
-          </div>
+          </section>
 
           {/* Controls */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1069,9 +1055,9 @@ export function StaffWorkspace({
               <div className="flex items-center gap-1.5 overflow-x-auto max-w-full">
                 {(
                   [
-                    { id: 'OPEN', label: 'Con pendenze' },
-                    { id: 'MANCANTI', label: 'Solo Mancanti' },
-                    { id: 'BUSTE', label: 'Solo Buste' },
+                    { id: 'OPEN', label: 'Aperti' },
+                    { id: 'MANCANTI', label: 'Mancanti' },
+                    { id: 'BUSTE', label: 'Buste' },
                     { id: 'ALL', label: 'Tutti' },
                   ] as const
                 ).map((f) => {
@@ -1096,7 +1082,7 @@ export function StaffWorkspace({
               </div>
             </div>
 
-            <div className="relative w-full sm:w-[240px]">
+            <div className="relative w-full sm:w-[220px]">
               <Search
                 className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4"
                 style={{ color: 'var(--ink-tertiary)' }}
@@ -1114,7 +1100,7 @@ export function StaffWorkspace({
 
           {/* LEDGER VIEW A: BY SUB-PR */}
           {ledgerMode === 'by_pr' && (
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {filteredLedgerPrs.length === 0 ? (
                 <div className="apple-card p-10 text-center">
                   <Wallet
@@ -1123,9 +1109,6 @@ export function StaffWorkspace({
                     aria-hidden="true"
                   />
                   <h3 className="text-[16px] font-semibold">Nessuna pendenza aperta</h3>
-                  <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-secondary)' }}>
-                    Tutti i sotto-PR sono in pari secondo il filtro selezionato.
-                  </p>
                 </div>
               ) : (
                 filteredLedgerPrs.map((pr) => {
@@ -1139,10 +1122,10 @@ export function StaffWorkspace({
 
                   return (
                     <div key={pr.key} className="apple-card overflow-hidden">
-                      <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="flex items-start gap-3 min-w-0">
+                      <div className="px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
                           <div
-                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[13px] font-bold"
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold"
                             style={{
                               backgroundColor: pr.isSelf
                                 ? 'var(--accent-subtle)'
@@ -1153,67 +1136,63 @@ export function StaffWorkspace({
                             {pr.displayName.slice(0, 2).toUpperCase()}
                           </div>
                           <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-[15px] font-semibold truncate">
-                                {pr.displayName}
-                              </span>
-                              {pr.fullName !== pr.displayName && (
-                                <span
-                                  className="text-[12px] truncate"
-                                  style={{ color: 'var(--ink-tertiary)' }}
-                                >
-                                  {pr.fullName}
-                                </span>
-                              )}
-                              <span
-                                className="rounded-full px-2 py-0.5 text-[11px] font-medium"
-                                style={{
-                                  backgroundColor: 'var(--bg-surface-secondary)',
-                                  color: 'var(--ink-secondary)',
-                                }}
-                              >
-                                {pr.planName}
-                              </span>
+                            <div className="text-[15px] font-semibold truncate">
+                              {pr.displayName}
                             </div>
                             <div
-                              className="mt-0.5 text-[12px] tabular-nums"
+                              className="text-[12px] tabular-nums"
                               style={{ color: 'var(--ink-secondary)' }}
                             >
-                              {pr.eventsCount} serate · {formatInt(pr.pxTotal)} px (
-                              {formatInt(pr.pxPresales)} preve + {formatInt(pr.pxTables)} tav.)
+                              {pr.eventsCount} serate · {formatInt(pr.pxTotal)} px
                             </div>
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                          <div className="flex items-center gap-2 tabular-nums">
-                            <div className="text-right">
-                              <div
-                                className="text-[10px] font-medium"
-                                style={{ color: 'var(--ink-tertiary)' }}
-                              >
-                                Mancanti
-                              </div>
+                        <div className="flex flex-wrap items-center gap-2.5 sm:justify-end">
+                          <div className="flex items-center gap-3 tabular-nums">
+                            {pr.mancantiTotal > 0.01 && (
                               <MancantiBadge value={pr.mancantiTotal} compact />
-                            </div>
-                            <div className="text-right min-w-[74px]">
-                              <div
-                                className="text-[10px] font-medium"
-                                style={{ color: 'var(--ink-tertiary)' }}
-                              >
-                                Buste dovute
-                              </div>
+                            )}
+                            <div className="text-right min-w-[78px]">
                               <div
                                 className="text-[14px] font-bold"
                                 style={{
                                   color:
-                                    pr.bustaUnpaid > 0.01
+                                    pr.bustaUnpaidPast > 0.01
                                       ? 'var(--accent)'
-                                      : 'var(--ink-secondary)',
+                                      : pr.bustaUnpaidActive > 0.01
+                                        ? 'var(--status-orange)'
+                                        : 'var(--ink-secondary)',
                                 }}
                               >
-                                {formatEur(pr.bustaUnpaid, true)}
+                                {pr.bustaUnpaidPast > 0.01
+                                  ? formatEur(pr.bustaUnpaidPast, true)
+                                  : pr.bustaUnpaidActive > 0.01
+                                    ? `${formatEur(pr.bustaUnpaidActive, true)}`
+                                    : '0,00 €'}
                               </div>
+                              {pr.bustaUnpaidPast > 0.01 && pr.bustaUnpaidActive > 0.01 ? (
+                                <div
+                                  className="text-[10px] font-semibold"
+                                  style={{ color: 'var(--status-orange)' }}
+                                >
+                                  +{formatEur(pr.bustaUnpaidActive, true)} in corso
+                                </div>
+                              ) : pr.bustaUnpaidActive > 0.01 ? (
+                                <div
+                                  className="text-[10px] font-semibold"
+                                  style={{ color: 'var(--status-orange)' }}
+                                >
+                                  In corso · provv.
+                                </div>
+                              ) : (
+                                <div
+                                  className="text-[10px]"
+                                  style={{ color: 'var(--ink-tertiary)' }}
+                                >
+                                  Buste
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -1235,15 +1214,15 @@ export function StaffWorkspace({
                                 }}
                               >
                                 <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                                Salda cassa
+                                Salda
                               </button>
                             )}
-                            {pr.bustaUnpaid > 0.01 && (
+                            {pr.bustaUnpaidPast > 0.01 && (
                               <button
                                 type="button"
                                 onClick={async () => {
                                   for (const entry of pr.eventEntries) {
-                                    if (entry.rollup.bustaUnpaidAmount > 0.01) {
+                                    if (!entry.isActive && entry.rollup.bustaUnpaidAmount > 0.01) {
                                       await staffData.toggleMemberBustaPaid(entry.rollup, true);
                                     }
                                   }
@@ -1251,7 +1230,7 @@ export function StaffWorkspace({
                                 className="inline-flex items-center gap-1 rounded-[9px] px-2.5 py-1.5 text-[12px] font-semibold text-white apple-press cursor-pointer"
                                 style={{ backgroundColor: 'var(--accent)' }}
                               >
-                                Paga buste
+                                {pr.bustaUnpaidActive > 0.01 ? 'Paga definitive' : 'Paga buste'}
                               </button>
                             )}
                             <button
@@ -1287,39 +1266,44 @@ export function StaffWorkspace({
                             backgroundColor: 'var(--bg-surface-secondary)',
                           }}
                         >
-                          {openEntries.map(({ event, rollup }) => (
+                          {openEntries.map(({ event, isActive, rollup }) => (
                             <div
                               key={event.id}
                               className="rounded-[11px] px-3 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
                               style={{ backgroundColor: 'var(--bg-surface)' }}
                             >
                               <div className="min-w-0">
-                                <button
-                                  type="button"
-                                  onClick={() => jumpToEvent(event.id)}
-                                  className="inline-flex items-center gap-1 text-[13px] font-semibold hover:underline cursor-pointer text-left"
-                                >
-                                  <span>{event.title}</span>
-                                  <ArrowRight
-                                    className="h-3 w-3 shrink-0"
-                                    style={{ color: 'var(--ink-tertiary)' }}
-                                    aria-hidden="true"
-                                  />
-                                </button>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <button
+                                    type="button"
+                                    onClick={() => jumpToEvent(event.id)}
+                                    className="inline-flex items-center gap-1 text-[13px] font-semibold hover:underline cursor-pointer text-left"
+                                  >
+                                    <span>{event.title}</span>
+                                    <ArrowRight
+                                      className="h-3 w-3 shrink-0"
+                                      style={{ color: 'var(--ink-tertiary)' }}
+                                      aria-hidden="true"
+                                    />
+                                  </button>
+                                  {isActive && (
+                                    <span
+                                      className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                                      style={{
+                                        backgroundColor: 'var(--status-orange-bg)',
+                                        color: 'var(--status-orange)',
+                                      }}
+                                    >
+                                      Attiva · provv.
+                                    </span>
+                                  )}
+                                </div>
                                 <div
                                   className="text-[11px] tabular-nums"
                                   style={{ color: 'var(--ink-secondary)' }}
                                 >
                                   {formatDateDayMonth(event.event_date)} · {event.venue_name} ·{' '}
                                   {formatInt(rollup.pxTotal)} px
-                                  {rollup.tablesCount > 1 && (
-                                    <span
-                                      className="ml-1.5 font-medium"
-                                      style={{ color: 'var(--accent)' }}
-                                    >
-                                      ({rollup.tablesCount} tavoli sommati)
-                                    </span>
-                                  )}
                                 </div>
                               </div>
 
@@ -1352,10 +1336,14 @@ export function StaffWorkspace({
                                     style={{
                                       backgroundColor: rollup.allBustaPaid
                                         ? 'var(--status-green-bg)'
-                                        : 'var(--accent-subtle)',
+                                        : isActive
+                                          ? 'var(--status-orange-bg)'
+                                          : 'var(--accent-subtle)',
                                       color: rollup.allBustaPaid
                                         ? 'var(--status-green)'
-                                        : 'var(--accent)',
+                                        : isActive
+                                          ? 'var(--status-orange)'
+                                          : 'var(--accent)',
                                     }}
                                   >
                                     {rollup.allBustaPaid ? 'Pagata' : 'Paga'}{' '}
@@ -1374,10 +1362,91 @@ export function StaffWorkspace({
             </div>
           )}
 
-          {/* LEDGER VIEW B: BY EVENT */}
-          {ledgerMode === 'by_event' && (
-            <div className="space-y-2.5">
-              {filteredLedgerEvents.length === 0 ? (
+          {/* LEDGER VIEW B: BY EVENT — Split into Active (Provisional) & Past (Final) */}
+          {ledgerMode === 'by_event' && (() => {
+            const activeRows = filteredLedgerEvents
+              .filter((r) => r.isActive)
+              .sort((a, b) => a.event.event_date.localeCompare(b.event.event_date));
+            const pastRows = filteredLedgerEvents.filter((r) => !r.isActive);
+
+            const renderEventLedgerCard = ({
+              event,
+              isActive,
+              summary,
+            }: (typeof filteredLedgerEvents)[number]) => (
+              <div
+                key={event.id}
+                className="apple-card px-4 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{
+                        backgroundColor: venueColorMap.get(event.venue_name) || '#0071E3',
+                      }}
+                    />
+                    <span className="text-[15px] font-semibold truncate">{event.title}</span>
+                    {isActive && (
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0"
+                        style={{
+                          backgroundColor: 'var(--status-orange-bg)',
+                          color: 'var(--status-orange)',
+                        }}
+                      >
+                        Provvisoria
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    className="mt-0.5 text-[12px] tabular-nums"
+                    style={{ color: 'var(--ink-secondary)' }}
+                  >
+                    {formatDateDayMonth(event.event_date)} · {event.venue_name} ·{' '}
+                    {formatInt(summary.pxTotal)} px
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 tabular-nums">
+                  {summary.totalMancanti > 0.01 && (
+                    <MancantiBadge value={summary.totalMancanti} compact />
+                  )}
+                  <div className="text-right min-w-[76px]">
+                    <div
+                      className="text-[14px] font-bold"
+                      style={{
+                        color:
+                          summary.totalBustaUnpaid > 0.01
+                            ? isActive
+                              ? 'var(--status-orange)'
+                              : 'var(--accent)'
+                            : 'var(--status-green)',
+                      }}
+                    >
+                      {summary.totalBustaUnpaid > 0.01
+                        ? formatEur(summary.totalBustaUnpaid, true)
+                        : 'Pagate'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => jumpToEvent(event.id)}
+                    className="inline-flex items-center gap-1 rounded-[10px] px-3 py-1.5 text-[12px] font-semibold apple-press cursor-pointer"
+                    style={{
+                      backgroundColor: 'var(--bg-surface-secondary)',
+                      color: 'var(--ink-primary)',
+                    }}
+                  >
+                    Apri
+                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            );
+
+            if (activeRows.length === 0 && pastRows.length === 0) {
+              return (
                 <div className="apple-card p-10 text-center">
                   <CheckCircle2
                     className="h-9 w-9 mx-auto mb-2.5"
@@ -1385,84 +1454,47 @@ export function StaffWorkspace({
                     aria-hidden="true"
                   />
                   <h3 className="text-[16px] font-semibold">Nessuna serata aperta</h3>
-                  <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-secondary)' }}>
-                    Tutte le serate staff risultano saldate.
-                  </p>
                 </div>
-              ) : (
-                filteredLedgerEvents.map(({ event, summary }) => (
-                  <div
-                    key={event.id}
-                    className="apple-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                  >
-                    <div className="min-w-0">
+              );
+            }
+
+            return (
+              <div className="space-y-5">
+                {activeRows.length > 0 && (
+                  <section className="space-y-2">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2 px-1">
                       <div className="flex items-center gap-2">
                         <span
-                          className="h-2.5 w-2.5 rounded-full shrink-0"
-                          style={{
-                            backgroundColor: venueColorMap.get(event.venue_name) || '#0071E3',
-                          }}
+                          className="h-2 w-2 rounded-full"
+                          style={{ backgroundColor: 'var(--status-orange)' }}
+                          aria-hidden="true"
                         />
-                        <span className="text-[15px] font-semibold truncate">{event.title}</span>
+                        <h2 className="text-[14px] font-semibold">
+                          Serate attive · provvisorie ({activeRows.length})
+                        </h2>
                       </div>
-                      <div
-                        className="mt-0.5 text-[12px] tabular-nums"
-                        style={{ color: 'var(--ink-secondary)' }}
-                      >
-                        {formatDateDayMonth(event.event_date)} · {event.venue_name} ·{' '}
-                        {summary.membersRollup.length} PR · {formatInt(summary.pxTotal)} px
-                      </div>
+                      <span className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
+                        Ingressi ancora in corso
+                      </span>
                     </div>
+                    <div className="space-y-2">{activeRows.map(renderEventLedgerCard)}</div>
+                  </section>
+                )}
 
-                    <div className="flex flex-wrap items-center gap-3 tabular-nums">
-                      <div className="text-right">
-                        <div
-                          className="text-[10px] font-medium"
-                          style={{ color: 'var(--ink-tertiary)' }}
-                        >
-                          Mancanti Staff
-                        </div>
-                        <MancantiBadge value={summary.totalMancanti} compact />
-                      </div>
-                      <div className="text-right min-w-[78px]">
-                        <div
-                          className="text-[10px] font-medium"
-                          style={{ color: 'var(--ink-tertiary)' }}
-                        >
-                          Buste da pagare
-                        </div>
-                        <div
-                          className="text-[14px] font-bold"
-                          style={{
-                            color:
-                              summary.totalBustaUnpaid > 0.01
-                                ? 'var(--accent)'
-                                : 'var(--status-green)',
-                          }}
-                        >
-                          {summary.totalBustaUnpaid > 0.01
-                            ? formatEur(summary.totalBustaUnpaid, true)
-                            : 'Pagate'}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => jumpToEvent(event.id)}
-                        className="inline-flex items-center gap-1 rounded-[10px] px-3 py-1.5 text-[12px] font-semibold apple-press cursor-pointer"
-                        style={{
-                          backgroundColor: 'var(--bg-surface-secondary)',
-                          color: 'var(--ink-primary)',
-                        }}
-                      >
-                        Apri
-                        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
+                {pastRows.length > 0 && (
+                  <section className="space-y-2">
+                    <h2
+                      className="px-1 text-[14px] font-semibold"
+                      style={{ color: 'var(--ink-secondary)' }}
+                    >
+                      Serate passate · definitive ({pastRows.length})
+                    </h2>
+                    <div className="space-y-2">{pastRows.map(renderEventLedgerCard)}</div>
+                  </section>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 

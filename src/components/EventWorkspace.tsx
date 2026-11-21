@@ -1,17 +1,8 @@
 import { useMemo, useState } from 'react';
-import {
-  AlertTriangle,
-  CalendarDays,
-  CheckCircle2,
-  Plus,
-  RefreshCw,
-  Search,
-  Ticket,
-  X,
-} from 'lucide-react';
+import { CalendarDays, CheckCircle2, Plus, Search, X } from 'lucide-react';
 import { EventDetail } from './EventDetail';
-import { formatDateDayMonth, formatEur, formatInt, formatMonthYear } from '../lib/format';
-import type { useTicketSmsData } from '../hooks/useTicketSmsData';
+import { splitActiveAndPastEvents } from '../lib/events';
+import { formatDateDayMonth, formatEur, formatInt } from '../lib/format';
 import type {
   AppSettings,
   EventPresale,
@@ -39,8 +30,6 @@ export function EventWorkspace({
   staffMembers,
   staffMemberUsageScore,
   staffTableByEventTableId,
-  ticketSmsEnabled,
-  ticketSmsData,
   canUndo,
   canRedo,
   lastUndoLabel,
@@ -74,8 +63,6 @@ export function EventWorkspace({
   staffMembers: StaffMember[];
   staffMemberUsageScore: Map<string, number>;
   staffTableByEventTableId: Map<string, StaffEventTable>;
-  ticketSmsEnabled: boolean;
-  ticketSmsData: ReturnType<typeof useTicketSmsData>;
   canUndo: boolean;
   canRedo: boolean;
   lastUndoLabel: string | null;
@@ -161,20 +148,10 @@ export function EventWorkspace({
     });
   }, [events, summaries, search, venueFilter, statusFilter]);
 
-  const groupedByMonth = useMemo(() => {
-    const groups: { monthLabel: string; items: FullEvent[] }[] = [];
-    let currentLabel = '';
-    for (const ev of filteredEvents) {
-      const lbl = formatMonthYear(ev.event_date);
-      if (lbl !== currentLabel) {
-        currentLabel = lbl;
-        groups.push({ monthLabel: lbl, items: [ev] });
-      } else {
-        groups[groups.length - 1].items.push(ev);
-      }
-    }
-    return groups;
-  }, [filteredEvents]);
+  const { active: activeEvents, past: pastEvents } = useMemo(
+    () => splitActiveAndPastEvents(filteredEvents),
+    [filteredEvents]
+  );
 
   const uniqueVenueNames = useMemo(
     () => Array.from(new Set(events.map((e) => e.venue_name))).sort(),
@@ -184,21 +161,7 @@ export function EventWorkspace({
   const activeEvent = selectedEventId ? events.find((e) => e.id === selectedEventId) || null : null;
   const activeSummary = activeEvent ? summaries.get(activeEvent.id) : undefined;
 
-  // Focused Full-Screen Event Detail (zero distracting sidebar of other events!)
   if (activeEvent && activeSummary) {
-    const linkedTsEvent =
-      ticketSmsEnabled && activeEvent.ticketsms_event_id !== null
-        ? ticketSmsData.eventsById.get(activeEvent.ticketsms_event_id) ?? null
-        : null;
-    const linkedReportRows =
-      ticketSmsEnabled && activeEvent.ticketsms_event_id !== null
-        ? ticketSmsData.reportRowsByEvent.get(activeEvent.ticketsms_event_id) ?? []
-        : [];
-    const linkedTicketTypes =
-      ticketSmsEnabled && activeEvent.ticketsms_event_id !== null
-        ? ticketSmsData.ticketTypesByEvent.get(activeEvent.ticketsms_event_id) ?? []
-        : [];
-
     return (
       <EventDetail
         key={activeEvent.id}
@@ -213,13 +176,6 @@ export function EventWorkspace({
         staffMembers={staffMembers}
         staffMemberUsageScore={staffMemberUsageScore}
         staffTableByEventTableId={staffTableByEventTableId}
-        ticketSmsEvent={linkedTsEvent}
-        ticketSmsReportRows={linkedReportRows}
-        ticketSmsTicketTypes={linkedTicketTypes}
-        ticketSmsSyncStatus={ticketSmsEnabled ? ticketSmsData.syncStatus : null}
-        ticketSmsSyncing={ticketSmsEnabled ? ticketSmsData.syncing : false}
-        ticketSmsSyncElapsedSec={ticketSmsEnabled ? ticketSmsData.syncElapsedSec : 0}
-        onTriggerTicketSmsSync={ticketSmsEnabled ? ticketSmsData.triggerManualSync : undefined}
         canUndo={canUndo}
         canRedo={canRedo}
         lastUndoLabel={lastUndoLabel}
@@ -243,105 +199,108 @@ export function EventWorkspace({
     );
   }
 
-  const tsStatus = ticketSmsEnabled ? ticketSmsData.syncStatus : null;
-  const showTsAlert =
-    ticketSmsEnabled &&
-    (tsStatus?.status === 'session_expired' || tsStatus?.status === 'error');
+  const renderEventCard = (ev: FullEvent, isActive: boolean) => {
+    const s = summaries.get(ev.id);
+    const hasMancanti = (s?.mancantiTotal ?? 0) > 0.01;
+    const venueColor = venueColorMap.get(ev.venue_name) || '#0071E3';
+    const ownBusta = s?.byPromoter[ownerPromoterId]?.bustaTotal ?? 0;
 
-  // Clean Full-Width Events Directory
-  return (
-    <div className="mx-auto w-full max-w-[1040px] px-4 sm:px-6 lg:px-8 pt-5 pb-28 lg:pb-12 space-y-5">
-      {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-[28px] sm:text-[34px] font-bold tracking-tight">Serate</h1>
-          <p className="mt-0.5 text-[13px] sm:text-[14px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-            {filteredEvents.length} di {events.length} serate · tocca una serata per aprirla a schermo intero
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {ticketSmsEnabled && (
-            <button
-              type="button"
-              disabled={ticketSmsData.syncing}
-              onClick={() => ticketSmsData.triggerManualSync()}
-              title="Sincronizza serate e prevendite da TicketSMS"
-              className="inline-flex items-center gap-1.5 rounded-[11px] px-3.5 py-2.5 text-[13px] font-semibold apple-surface apple-press cursor-pointer disabled:opacity-70"
-              style={{ color: 'var(--ink-primary)' }}
-            >
-              <RefreshCw
-                className={`h-4 w-4 ${ticketSmsData.syncing ? 'animate-spin' : ''}`}
-                style={{ color: 'var(--accent)' }}
-                aria-hidden="true"
-              />
-              <span>
-                {ticketSmsData.syncing
-                  ? ticketSmsData.syncElapsedSec > 0
-                    ? `TicketSMS… ${ticketSmsData.syncElapsedSec}s`
-                    : 'TicketSMS…'
-                  : 'Aggiorna TicketSMS'}
-              </span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={onOpenNewEvent}
-            className="inline-flex items-center gap-1.5 rounded-[11px] px-4 py-2.5 text-[14px] font-semibold text-white apple-press cursor-pointer"
-            style={{ backgroundColor: 'var(--accent)' }}
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Nuova serata
-          </button>
-        </div>
-      </div>
-
-      {showTsAlert && (
-        <div
-          role="alert"
-          className="rounded-[14px] px-4 py-3 flex items-start gap-2.5 text-[13px]"
-          style={{
-            backgroundColor:
-              tsStatus?.status === 'session_expired'
-                ? 'var(--status-orange-bg)'
-                : 'var(--status-red-bg)',
-          }}
-        >
-          <AlertTriangle
-            className="h-4 w-4 shrink-0 mt-0.5"
-            style={{
-              color:
-                tsStatus?.status === 'session_expired'
-                  ? 'var(--status-orange)'
-                  : 'var(--status-red)',
-            }}
-            aria-hidden="true"
-          />
-          <div className="min-w-0">
+    return (
+      <button
+        key={ev.id}
+        type="button"
+        onClick={() => onSelectEvent(ev.id)}
+        className="apple-card w-full min-w-0 overflow-hidden px-4 py-3.5 text-left apple-press cursor-pointer hover:ring-1 hover:ring-[var(--accent)] transition-[box-shadow,transform]"
+        style={
+          isActive
+            ? {
+                boxShadow: 'var(--shadow-card), inset 3px 0 0 var(--accent)',
+              }
+            : undefined
+        }
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex items-center gap-2">
             <span
-              className="font-semibold"
+              className="h-2.5 w-2.5 rounded-full shrink-0"
+              style={{ backgroundColor: venueColor }}
+            />
+            <span className="text-[15px] sm:text-[16px] font-semibold truncate">{ev.title}</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0 tabular-nums">
+            {ev.is_busta_paid && (
+              <CheckCircle2
+                className="h-3.5 w-3.5 shrink-0"
+                style={{ color: 'var(--status-green)' }}
+                aria-label="Busta saldata"
+              />
+            )}
+            <span
+              className="text-[15px] sm:text-[16px] font-bold"
               style={{
-                color:
-                  tsStatus?.status === 'session_expired'
-                    ? 'var(--status-orange)'
-                    : 'var(--status-red)',
+                color: ev.is_busta_paid ? 'var(--status-green)' : 'var(--ink-primary)',
               }}
             >
-              {tsStatus?.status === 'session_expired'
-                ? 'Sessione TicketSMS scaduta.'
-                : 'Errore ultimo aggiornamento TicketSMS.'}
-            </span>{' '}
-            <span style={{ color: 'var(--ink-secondary)' }}>
-              {tsStatus?.message || 'Esegui aggiorna_ticketsms.bat dal PC per sincronizzare.'}
+              {formatEur(s?.bustaTotal ?? 0)}
             </span>
           </div>
         </div>
-      )}
+
+        <div className="mt-1.5 flex items-center justify-between gap-2 text-[12px] tabular-nums">
+          <div
+            className="min-w-0 flex items-center gap-1.5 truncate"
+            style={{ color: 'var(--ink-secondary)' }}
+          >
+            <span>{formatDateDayMonth(ev.event_date)}</span>
+            <span>·</span>
+            <span className="truncate">{ev.venue_name}</span>
+            <span>·</span>
+            <span>{formatInt(s?.pxTotal ?? 0)} px</span>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {hasMancanti ? (
+              <span
+                className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                style={{
+                  backgroundColor: 'var(--status-red-bg)',
+                  color: 'var(--status-red)',
+                }}
+              >
+                -{formatEur(s?.mancantiTotal ?? 0)}
+              </span>
+            ) : ownBusta > 0.01 ? (
+              <span className="text-[12px] font-medium" style={{ color: 'var(--accent)' }}>
+                Tua {formatEur(ownBusta, true)}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </button>
+    );
+  };
+
+  return (
+    <div className="mx-auto w-full max-w-[1000px] px-4 sm:px-6 lg:px-8 pt-5 pb-28 lg:pb-12 space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-[28px] sm:text-[34px] font-bold tracking-tight">Serate</h1>
+
+        <button
+          type="button"
+          onClick={onOpenNewEvent}
+          className="inline-flex items-center gap-1.5 rounded-[11px] px-4 py-2 text-[14px] font-semibold text-white apple-press cursor-pointer"
+          style={{ backgroundColor: 'var(--accent)' }}
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Nuova serata
+        </button>
+      </div>
 
       {/* Search & Filters */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-        <div className="relative flex-1 sm:max-w-[360px]">
+        <div className="relative flex-1 sm:max-w-[340px]">
           <Search
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4"
             style={{ color: 'var(--ink-tertiary)' }}
@@ -421,8 +380,8 @@ export function EventWorkspace({
         </div>
       </div>
 
-      {/* Grouped Event Grid */}
-      {groupedByMonth.length === 0 ? (
+      {/* Exclusively Active vs Past Events */}
+      {activeEvents.length === 0 && pastEvents.length === 0 ? (
         <div className="apple-card p-12 text-center">
           <CalendarDays
             className="h-9 w-9 mx-auto mb-2.5"
@@ -436,132 +395,37 @@ export function EventWorkspace({
         </div>
       ) : (
         <div className="space-y-6">
-          {groupedByMonth.map((group) => (
-            <section key={group.monthLabel} className="space-y-2.5">
-              <h2
-                className="px-1 text-[13px] font-semibold"
-                style={{ color: 'var(--ink-secondary)' }}
-              >
-                {group.monthLabel}
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {group.items.map((ev) => {
-                  const s = summaries.get(ev.id);
-                  const ss = staffSummariesByEvent.get(ev.id);
-                  const hasMancanti = (s?.mancantiTotal ?? 0) > 0.01;
-                  const venueColor = venueColorMap.get(ev.venue_name) || '#0071E3';
-                  const ownBusta = s?.byPromoter[ownerPromoterId]?.bustaTotal ?? 0;
-                  const staffBusta = ss?.totalBusta ?? 0;
-                  const ownNet = Math.round((ownBusta - staffBusta) * 100) / 100;
-                  const linkedTs =
-                    ticketSmsEnabled && ev.ticketsms_event_id !== null
-                      ? ticketSmsData.eventsById.get(ev.ticketsms_event_id)
-                      : undefined;
-
-                  return (
-                    <button
-                      key={ev.id}
-                      type="button"
-                      onClick={() => onSelectEvent(ev.id)}
-                      className="apple-card w-full min-w-0 overflow-hidden p-4 text-left apple-press cursor-pointer hover:ring-1 hover:ring-[var(--accent)] transition-[box-shadow,transform]"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="h-2.5 w-2.5 rounded-full shrink-0"
-                              style={{ backgroundColor: venueColor }}
-                            />
-                            <span className="text-[16px] font-semibold truncate">{ev.title}</span>
-                            {linkedTs && (
-                              <span
-                                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0"
-                                style={{
-                                  backgroundColor: linkedTs.is_active
-                                    ? 'var(--accent-subtle)'
-                                    : 'var(--bg-surface-secondary)',
-                                  color: linkedTs.is_active
-                                    ? 'var(--accent)'
-                                    : 'var(--ink-secondary)',
-                                }}
-                                title="Collegata automaticamente a TicketSMS"
-                              >
-                                <Ticket className="h-2.5 w-2.5" aria-hidden="true" />
-                                TicketSMS
-                              </span>
-                            )}
-                          </div>
-                          <div
-                            className="mt-0.5 flex items-center gap-1.5 text-[12px] truncate"
-                            style={{ color: 'var(--ink-secondary)' }}
-                          >
-                            <span className="tabular-nums">
-                              {formatDateDayMonth(ev.event_date)}
-                            </span>
-                            <span>·</span>
-                            <span className="truncate">{ev.venue_name}</span>
-                            <span>·</span>
-                            <span className="tabular-nums">{formatInt(s?.pxTotal ?? 0)} px</span>
-                          </div>
-                        </div>
-
-                        <div className="text-right shrink-0 tabular-nums">
-                          <div className="text-[16px] font-bold">
-                            {formatEur(s?.bustaTotal ?? 0)}
-                          </div>
-                          <div className="text-[11px]" style={{ color: 'var(--ink-tertiary)' }}>
-                            Fatt. {formatEur(s?.revenueTotal ?? 0)}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div
-                        className="mt-3 pt-2.5 flex flex-wrap items-center justify-between gap-2 text-[12px] tabular-nums"
-                        style={{ borderTop: '0.5px solid var(--separator)' }}
-                      >
-                        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
-                          <span className="font-semibold" style={{ color: 'var(--accent)' }}>
-                            Tua busta {formatEur(ownBusta, true)}
-                          </span>
-                          {staffBusta > 0.01 && (
-                            <span
-                              className="font-semibold"
-                              style={{ color: 'var(--status-green)' }}
-                            >
-                              Netto {formatEur(ownNet, true)}
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-1.5">
-                          {ev.is_busta_paid && (
-                            <span
-                              className="inline-flex items-center gap-0.5 text-[11px] font-semibold"
-                              style={{ color: 'var(--status-green)' }}
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-                              Pagata
-                            </span>
-                          )}
-                          {hasMancanti && (
-                            <span
-                              className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                              style={{
-                                backgroundColor: 'var(--status-red-bg)',
-                                color: 'var(--status-red)',
-                              }}
-                            >
-                              -{formatEur(s?.mancantiTotal ?? 0)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
+          {activeEvents.length > 0 && (
+            <section className="space-y-2.5">
+              <div className="flex items-center gap-2 px-1">
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: 'var(--status-green)' }}
+                  aria-hidden="true"
+                />
+                <h2 className="text-[14px] font-semibold">
+                  Serate attive ({activeEvents.length})
+                </h2>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                {activeEvents.map((ev) => renderEventCard(ev, true))}
               </div>
             </section>
-          ))}
+          )}
+
+          {pastEvents.length > 0 && (
+            <section className="space-y-2.5">
+              <h2
+                className="px-1 text-[14px] font-semibold"
+                style={{ color: 'var(--ink-secondary)' }}
+              >
+                Serate passate ({pastEvents.length})
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                {pastEvents.map((ev) => renderEventCard(ev, false))}
+              </div>
+            </section>
+          )}
         </div>
       )}
     </div>

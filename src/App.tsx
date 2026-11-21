@@ -276,8 +276,6 @@ export default function App() {
                   staffMembers={staffData.members}
                   staffMemberUsageScore={staffData.memberUsageScore}
                   staffTableByEventTableId={staffData.staffTableByEventTableId}
-                  ticketSmsEnabled={ticketSmsEnabled}
-                  ticketSmsData={ticketSmsData}
                   canUndo={data.canUndo}
                   canRedo={data.canRedo}
                   lastUndoLabel={data.lastUndoLabel}
@@ -415,6 +413,7 @@ export default function App() {
                     themePreference={preference}
                     onChangeTheme={setPreference}
                     syncState={data.syncState}
+                    ticketSmsSyncStatus={ticketSmsEnabled ? ticketSmsData.syncStatus : null}
                     userEmail={currentAccount.email}
                     userDisplayName={currentAccount.displayName}
                     userPromoterId={currentAccount.promoterId}

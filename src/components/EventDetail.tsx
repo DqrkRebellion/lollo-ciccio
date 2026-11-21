@@ -12,7 +12,6 @@ import {
   Redo2,
   Share2,
   SlidersHorizontal,
-  Ticket,
   Trash2,
   Undo2,
 } from 'lucide-react';
@@ -27,8 +26,8 @@ import {
   SegmentedControl,
 } from './ui/AppleControls';
 import { StaffMemberPicker, StaffMemberPickerButton } from './ui/StaffMemberPicker';
-import { TicketSmsPresalesTable } from './TicketSmsPresalesTable';
 import { computeTable, resolveRules } from '../lib/calculations';
+import { isEventActive } from '../lib/events';
 import {
   buildWhatsAppSummary,
   formatDateFull,
@@ -46,18 +45,11 @@ import type {
   EventSummary,
   EventTable,
   FullEvent,
-  PresaleInputMode,
   Promoter,
   ScaricoStatus,
   Venue,
 } from '../types';
 import type { StaffEventSummary, StaffEventTable, StaffMember } from '../types/staff';
-import type {
-  TicketSmsEvent,
-  TicketSmsReportRow,
-  TicketSmsSyncStatus,
-  TicketSmsTicketType,
-} from '../types/ticketsms';
 
 const SCARICO_CYCLE: ScaricoStatus[] = ['DA SCARICARE', 'DA NON SCARICARE', '-'];
 const QUICK_PAYERS = [5, 8, 10, 12, 15, 20];
@@ -110,13 +102,6 @@ export function EventDetail({
   staffMembers = [],
   staffMemberUsageScore,
   staffTableByEventTableId,
-  ticketSmsEvent = null,
-  ticketSmsReportRows = [],
-  ticketSmsTicketTypes = [],
-  ticketSmsSyncStatus = null,
-  ticketSmsSyncing = false,
-  ticketSmsSyncElapsedSec = 0,
-  onTriggerTicketSmsSync,
   canUndo,
   canRedo,
   lastUndoLabel,
@@ -148,13 +133,6 @@ export function EventDetail({
   staffMembers?: StaffMember[];
   staffMemberUsageScore?: Map<string, number>;
   staffTableByEventTableId?: Map<string, StaffEventTable>;
-  ticketSmsEvent?: TicketSmsEvent | null;
-  ticketSmsReportRows?: TicketSmsReportRow[];
-  ticketSmsTicketTypes?: TicketSmsTicketType[];
-  ticketSmsSyncStatus?: TicketSmsSyncStatus | null;
-  ticketSmsSyncing?: boolean;
-  ticketSmsSyncElapsedSec?: number;
-  onTriggerTicketSmsSync?: () => Promise<void>;
   canUndo: boolean;
   canRedo: boolean;
   lastUndoLabel: string | null;
@@ -224,9 +202,13 @@ export function EventDetail({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [expandedMobilePrs, setExpandedMobilePrs] = useState<Record<string, boolean>>({});
   const [expandedMobileTables, setExpandedMobileTables] = useState<Record<string, boolean>>({});
-  const [showMobileExtraCash, setShowMobileExtraCash] = useState(
-    () => event.lista_cost > 0 || event.general_note_amount !== 0
+  const [showExtraCash, setShowExtraCash] = useState(
+    () =>
+      event.lista_cost > 0 ||
+      event.general_note_amount !== 0 ||
+      summary.listaPrTotalCount > 0
   );
+  const eventIsActive = isEventActive(event);
 
   // Import prevendite state
   const [importText, setImportText] = useState('');
@@ -318,8 +300,6 @@ export function EventDetail({
   const ownerOwnBusta = ownerPromoterId
     ? summary.byPromoter[ownerPromoterId]?.bustaTotal ?? 0
     : 0;
-  const ownerStaffBusta = staffSummary?.totalBusta ?? 0;
-  const ownerNetAfterStaff = Math.round((ownerOwnBusta - ownerStaffBusta) * 100) / 100;
 
   const handleQuickAddTable = async (keepOpen = false) => {
     if (
@@ -388,14 +368,15 @@ export function EventDetail({
     toast.success('Report prevendite importato');
   };
 
-  // --- Prevendite: Smart "Totale − Lollo → Ciccio" ---
+  // --- Prevendite: mode strictly controlled from Settings ---
   const primaryPrId = summary.promoterOrder.includes('lollo')
     ? 'lollo'
     : summary.promoterOrder[0] || 'lollo';
   const secondaryPrId =
     summary.promoterOrder.find((id) => id !== primaryPrId) || 'ciccio';
   const isTotalMinusMode =
-    event.presale_input_mode === 'total_minus_primary' && summary.promoterOrder.length === 2;
+    settings.default_presale_input_mode === 'total_minus_primary' &&
+    summary.promoterOrder.length === 2;
 
   const primaryPresale = event.presales.find((p) => p.promoter_id === primaryPrId);
 
@@ -497,7 +478,7 @@ export function EventDetail({
               style={{ color: 'var(--accent)' }}
             >
               <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-              Tutte le serate
+              Serate
             </button>
           )}
           <span
@@ -514,35 +495,10 @@ export function EventDetail({
             />
             {event.venue_name}
           </span>
-          {ticketSmsEvent && (
-            <span
-              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold"
-              style={{
-                backgroundColor: ticketSmsEvent.is_active
-                  ? 'var(--accent-subtle)'
-                  : 'var(--bg-surface-secondary)',
-                color: ticketSmsEvent.is_active ? 'var(--accent)' : 'var(--ink-secondary)',
-              }}
-            >
-              <Ticket className="h-3 w-3" aria-hidden="true" />
-              TicketSMS
-            </span>
-          )}
-          {event.era === '3PX' && (
-            <span
-              className="rounded-full px-2 py-0.5 text-[11px] font-medium"
-              style={{
-                backgroundColor: 'var(--bg-surface-secondary)',
-                color: 'var(--ink-secondary)',
-              }}
-            >
-              3 PR
-            </span>
-          )}
         </div>
 
         <div className="flex items-center gap-1.5">
-          {/* Dedicated Undo / Redo Pill */}
+          {/* Undo / Redo Pill */}
           <div
             className="inline-flex items-center rounded-[10px] p-0.5 apple-surface"
             role="group"
@@ -575,15 +531,6 @@ export function EventDetail({
 
           <button
             type="button"
-            onClick={() => setShowEditMeta(true)}
-            className="inline-flex items-center gap-1.5 rounded-[10px] px-2.5 sm:px-3 py-1.5 text-[13px] font-medium apple-surface apple-press cursor-pointer"
-            aria-label="Modifica dati serata"
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
-            <span className="hidden sm:inline">Modifica</span>
-          </button>
-          <button
-            type="button"
             onClick={handleCopyWhatsApp}
             className="inline-flex items-center gap-1.5 rounded-[10px] px-2.5 sm:px-3 py-1.5 text-[13px] font-medium apple-surface apple-press cursor-pointer"
             title="Copia riepilogo WhatsApp"
@@ -592,24 +539,15 @@ export function EventDetail({
             <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
             <span className="hidden sm:inline">WhatsApp</span>
           </button>
+
           <button
             type="button"
-            onClick={() => onDuplicateEvent(event)}
-            className="hidden sm:inline-flex items-center gap-1.5 rounded-[10px] px-2.5 py-1.5 text-[13px] font-medium apple-surface apple-press cursor-pointer"
-            aria-label="Duplica serata"
-            title="Duplica struttura serata"
+            onClick={() => setShowEditMeta(true)}
+            className="inline-flex items-center gap-1.5 rounded-[10px] px-2.5 sm:px-3 py-1.5 text-[13px] font-medium apple-surface apple-press cursor-pointer"
+            aria-label="Modifica dati serata"
           >
-            <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowDeleteConfirm(true)}
-            className="inline-flex items-center gap-1.5 rounded-[10px] px-2.5 py-1.5 text-[13px] font-medium apple-surface apple-press cursor-pointer"
-            style={{ color: 'var(--status-red)' }}
-            aria-label="Elimina serata"
-            title="Elimina serata"
-          >
-            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+            <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+            <span className="hidden sm:inline">Modifica</span>
           </button>
         </div>
       </div>
@@ -620,9 +558,26 @@ export function EventDetail({
           <h1 className="text-[24px] sm:text-[32px] font-bold tracking-tight truncate">
             {event.title}
           </h1>
-          <p className="mt-0.5 text-[13px] sm:text-[14px]" style={{ color: 'var(--ink-secondary)' }}>
-            {formatDateFull(event.event_date)}
-          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-[13px] sm:text-[14px]">
+            <span style={{ color: 'var(--ink-secondary)' }}>
+              {formatDateFull(event.event_date)}
+            </span>
+            {eventIsActive && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                style={{
+                  backgroundColor: 'var(--status-green-bg)',
+                  color: 'var(--status-green)',
+                }}
+              >
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: 'var(--status-green)' }}
+                />
+                Attiva · provvisoria
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
@@ -656,10 +611,10 @@ export function EventDetail({
       {/* 1. Unified Financial Overview Strip */}
       <section className="apple-surface rounded-[18px] overflow-hidden mb-6">
         <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 divide-x divide-[var(--separator)]">
-          {/* PX Totali */}
+          {/* Ingressi */}
           <div className="p-3.5 sm:p-5 min-w-0">
             <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-              Ingressi totali
+              Ingressi
             </span>
             <div className="mt-1 text-[20px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none">
               {formatInt(summary.pxTotal)}
@@ -667,31 +622,29 @@ export function EventDetail({
                 px
               </span>
             </div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-              <span>Preve {formatInt(summary.pxPresales)}</span>
-              <span>Tavoli {formatInt(summary.pxTables)}</span>
+            <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+              {formatInt(summary.pxPresales)} preve · {formatInt(summary.pxTables)} tavoli
             </div>
           </div>
 
-          {/* Fatturato Totale */}
+          {/* Fatturato */}
           <div className="p-3.5 sm:p-5 min-w-0">
             <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
-              Fatturato totale
+              Fatturato
             </span>
             <div className="mt-1 text-[20px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none truncate">
               {formatEur(summary.revenueTotal)}
             </div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-              <span className="whitespace-nowrap">Preve {formatEur(summary.revenuePresales)}</span>
-              <span className="whitespace-nowrap">Tavoli {formatEur(summary.revenueTables)}</span>
+            <div className="mt-1.5 text-[12px] tabular-nums truncate" style={{ color: 'var(--ink-secondary)' }}>
+              {formatEur(summary.revenuePresales)} · {formatEur(summary.revenueTables)}
             </div>
           </div>
 
-          {/* Busta Totale */}
+          {/* Busta serata */}
           <div className="p-3.5 sm:p-5 min-w-0">
             <div className="flex items-center justify-between gap-1.5">
               <span className="text-[12px] font-medium truncate" style={{ color: 'var(--ink-secondary)' }}>
-                Busta serata
+                {eventIsActive ? 'Busta (provv.)' : 'Busta serata'}
               </span>
               <button
                 type="button"
@@ -709,38 +662,29 @@ export function EventDetail({
             >
               {formatEur(summary.bustaTotal, true)}
             </div>
-            {ownerPromoterId && (
-              <div
-                className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] font-semibold tabular-nums"
-              >
-                <span style={{ color: 'var(--accent)' }}>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[12px] tabular-nums">
+              {ownerPromoterId && (
+                <span className="font-semibold" style={{ color: 'var(--accent)' }}>
                   Tua {formatEur(ownerOwnBusta, true)}
                 </span>
-                {ownerStaffBusta > 0.01 && (
-                  <span style={{ color: 'var(--status-green)' }}>
-                    · Netto {formatEur(ownerNetAfterStaff, true)}
-                  </span>
-                )}
-              </div>
-            )}
-            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-              {summary.bonusAmount > 0 ? (
+              )}
+              {summary.bonusAmount > 0 && (
                 <span
-                  className="rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap"
+                  className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap"
                   style={{ backgroundColor: 'var(--status-green-bg)', color: 'var(--status-green)' }}
                 >
-                  Bonus +{formatEur(summary.bonusAmount)}
+                  +{formatEur(summary.bonusAmount)}
                 </span>
-              ) : (
-                <span>Nessun bonus</span>
               )}
               {summary.isBustaOverridden && (
-                <span style={{ color: 'var(--status-orange)' }}>· Manuale</span>
+                <span className="text-[11px]" style={{ color: 'var(--status-orange)' }}>
+                  Manuale
+                </span>
               )}
             </div>
           </div>
 
-          {/* Scarico & Mancanti */}
+          {/* Mancanti */}
           <div className="p-3.5 sm:p-5 min-w-0">
             <div className="flex items-center justify-between gap-1.5">
               <span className="text-[12px] font-medium truncate" style={{ color: 'var(--ink-secondary)' }}>
@@ -760,45 +704,25 @@ export function EventDetail({
             <div className="mt-1.5">
               <MancantiBadge value={summary.mancantiTotal} />
             </div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
-              <span className="whitespace-nowrap">Scarico {formatEur(summary.scaricoTotal)}</span>
-              <span className="whitespace-nowrap">Versati {formatEur(summary.scaricatoTotal)}</span>
-            </div>
+            {summary.scaricoTotal > 0.01 && (
+              <div className="mt-1.5 text-[12px] tabular-nums truncate" style={{ color: 'var(--ink-secondary)' }}>
+                Versati {formatEur(summary.scaricatoTotal)} / {formatEur(summary.scaricoTotal)}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Bonus Tier Progress Bar */}
-        {event.mode !== '-' && sortedTiersAsc.length > 0 && (
+        {/* Slim Bonus Progress Bar (only when event has revenue) */}
+        {event.mode !== '-' && sortedTiersAsc.length > 0 && summary.revenueTotal > 0 && (
           <div
-            className="px-4 sm:px-5 py-3"
+            className="px-4 sm:px-5 py-2.5 flex items-center gap-3"
             style={{
               borderTop: '0.5px solid var(--separator)',
               backgroundColor: 'var(--bg-surface)',
             }}
           >
-            <div className="flex flex-wrap items-center justify-between gap-1.5 text-[12px] mb-2">
-              <span className="font-medium" style={{ color: 'var(--ink-secondary)' }}>
-                Bonus fatturato
-              </span>
-              <span className="tabular-nums font-medium">
-                {summary.nextBonusTier ? (
-                  <>
-                    A{' '}
-                    <strong style={{ color: 'var(--accent)' }}>
-                      {formatEur(summary.amountToNextBonus)}
-                    </strong>{' '}
-                    da {formatEur(summary.nextBonusTier.threshold)} (+
-                    {formatEur(summary.nextBonusTier.bonus)})
-                  </>
-                ) : (
-                  <span style={{ color: 'var(--status-green)' }}>
-                    Massimo scaglione raggiunto (+{formatEur(summary.bonusAmount)})
-                  </span>
-                )}
-              </span>
-            </div>
             <div
-              className="relative h-2 w-full rounded-full overflow-hidden"
+              className="relative h-1.5 flex-1 rounded-full overflow-hidden"
               style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
             >
               <motion.div
@@ -811,24 +735,17 @@ export function EventDetail({
                 }}
               />
             </div>
-            <div
-              className="mt-1.5 hidden sm:flex items-center justify-between text-[11px] tabular-nums"
-              style={{ color: 'var(--ink-tertiary)' }}
-            >
-              <span>0 €</span>
-              {sortedTiersAsc.map((t) => {
-                const hit = summary.revenueTotal > t.threshold;
-                return (
-                  <span
-                    key={t.threshold}
-                    className="font-medium"
-                    style={{ color: hit ? 'var(--status-green)' : 'var(--ink-tertiary)' }}
-                  >
-                    {formatEur(t.threshold)} → +{formatEur(t.bonus)}
-                  </span>
-                );
-              })}
-            </div>
+            <span className="text-[12px] tabular-nums shrink-0" style={{ color: 'var(--ink-secondary)' }}>
+              {summary.nextBonusTier ? (
+                <>
+                  -<strong style={{ color: 'var(--accent)' }}>{formatEur(summary.amountToNextBonus)}</strong> al bonus +{formatEur(summary.nextBonusTier.bonus)}
+                </>
+              ) : (
+                <span className="font-semibold" style={{ color: 'var(--status-green)' }}>
+                  Bonus max +{formatEur(summary.bonusAmount)}
+                </span>
+              )}
+            </span>
           </div>
         )}
 
@@ -903,46 +820,16 @@ export function EventDetail({
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5 px-1">
           <h2 className="text-[18px] font-semibold">Riepilogo PR &amp; Cassa</h2>
 
-          {/* Desktop inline Lista / Rettifica */}
-          <div className="hidden md:flex items-center gap-3">
-            <label
-              className="inline-flex items-center gap-2 text-[13px]"
-              style={{ color: 'var(--ink-secondary)' }}
-            >
-              <span>Costo lista</span>
-              <NumericCellInput
-                value={event.lista_cost}
-                onCommit={(v) => onUpdateEvent(event.id, { lista_cost: v })}
-                prefix="€"
-                ariaLabel="Costo lista PR"
-                className="w-20"
-              />
-            </label>
-            <label
-              className="inline-flex items-center gap-2 text-[13px]"
-              style={{ color: 'var(--ink-secondary)' }}
-            >
-              <span>Rettifica gen.</span>
-              <NumericCellInput
-                value={event.general_note_amount}
-                onCommit={(v) => onUpdateEvent(event.id, { general_note_amount: v })}
-                allowNegative
-                prefix="€"
-                ariaLabel="Note rettifica generale"
-                className="w-24"
-              />
-            </label>
-          </div>
-
-          {/* Mobile toggle for Costo lista & Rettifica gen. */}
           <button
             type="button"
-            onClick={() => setShowMobileExtraCash((v) => !v)}
-            className="md:hidden inline-flex items-center gap-1 rounded-[8px] px-2.5 py-1 text-[12px] font-medium apple-surface apple-press cursor-pointer"
-            style={{ color: 'var(--ink-secondary)' }}
+            onClick={() => setShowExtraCash((v) => !v)}
+            className="inline-flex items-center gap-1 rounded-[9px] px-2.5 py-1 text-[12px] font-medium apple-surface apple-press cursor-pointer"
+            style={{
+              color: showExtraCash ? 'var(--accent)' : 'var(--ink-secondary)',
+            }}
           >
             Lista / Rettifica
-            {showMobileExtraCash ? (
+            {showExtraCash ? (
               <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
             ) : (
               <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
@@ -950,11 +837,11 @@ export function EventDetail({
           </button>
         </div>
 
-        {/* Mobile Extra Cash Settings */}
-        {showMobileExtraCash && (
-          <div className="md:hidden apple-surface rounded-[14px] p-3 mb-2.5 grid grid-cols-2 gap-2.5">
-            <div>
-              <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+        {/* Collapsible Costo lista & Rettifica gen. (mobile + desktop) */}
+        {showExtraCash && (
+          <div className="apple-surface rounded-[14px] p-3 mb-2.5 grid grid-cols-2 sm:flex sm:items-center gap-2.5 sm:gap-5">
+            <div className="sm:flex sm:items-center sm:gap-2">
+              <span className="block text-[11px] sm:text-[13px] mb-1 sm:mb-0" style={{ color: 'var(--ink-secondary)' }}>
                 Costo lista (€ / px)
               </span>
               <NumericCellInput
@@ -962,11 +849,12 @@ export function EventDetail({
                 prefix="€"
                 onCommit={(v) => onUpdateEvent(event.id, { lista_cost: v })}
                 ariaLabel="Costo lista PR"
+                className="sm:w-24"
               />
             </div>
-            <div>
-              <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
-                Rettifica generale (€)
+            <div className="sm:flex sm:items-center sm:gap-2">
+              <span className="block text-[11px] sm:text-[13px] mb-1 sm:mb-0" style={{ color: 'var(--ink-secondary)' }}>
+                Rettifica gen. (€)
               </span>
               <NumericCellInput
                 value={event.general_note_amount}
@@ -974,6 +862,7 @@ export function EventDetail({
                 prefix="€"
                 onCommit={(v) => onUpdateEvent(event.id, { general_note_amount: v })}
                 ariaLabel="Rettifica generale"
+                className="sm:w-28"
               />
             </div>
           </div>
@@ -1125,7 +1014,7 @@ export function EventDetail({
 
         {/* Desktop PR Table */}
         <div className="hidden md:block apple-surface rounded-[16px] overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[600px]">
+          <table className="w-full text-left border-collapse min-w-[560px]">
             <thead>
               <tr
                 className="text-[12px] font-medium"
@@ -1136,7 +1025,9 @@ export function EventDetail({
               >
                 <th className="py-3 pl-4 pr-2 font-medium">Promoter</th>
                 <th className="py-3 px-2 text-right font-medium">PX</th>
-                <th className="py-3 px-2 text-right font-medium w-[92px]">Lista PR</th>
+                {showExtraCash && (
+                  <th className="py-3 px-2 text-right font-medium w-[92px]">Lista PR</th>
+                )}
                 <th className="py-3 px-2 text-right font-medium">Scarico</th>
                 <th className="py-3 px-2 text-right font-medium w-[108px]">Note (€)</th>
                 <th className="py-3 px-2 text-right font-medium w-[148px]">Scaricato</th>
@@ -1179,16 +1070,18 @@ export function EventDetail({
                         {pr.pxPresales}p · {pr.pxTables}t
                       </div>
                     </td>
-                    <td className="py-3 px-2">
-                      <NumericCellInput
-                        value={pr.listaPrCount}
-                        integer
-                        onCommit={(v) =>
-                          onUpsertReconciliation(event.id, pid, { lista_pr_count: v })
-                        }
-                        ariaLabel={`Lista PR ${meta.display_name}`}
-                      />
-                    </td>
+                    {showExtraCash && (
+                      <td className="py-3 px-2">
+                        <NumericCellInput
+                          value={pr.listaPrCount}
+                          integer
+                          onCommit={(v) =>
+                            onUpsertReconciliation(event.id, pid, { lista_pr_count: v })
+                          }
+                          ariaLabel={`Lista PR ${meta.display_name}`}
+                        />
+                      </td>
+                    )}
                     <td className="py-3 px-2 text-right font-medium tabular-nums">
                       {formatEur(pr.scaricoTotal)}
                     </td>
@@ -1238,7 +1131,7 @@ export function EventDetail({
                       <div className="font-bold text-[15px]">{formatEur(pr.bustaTotal, true)}</div>
                       {pr.bustaBonusShare > 0 && (
                         <div className="text-[11px]" style={{ color: 'var(--status-green)' }}>
-                          incl. +{formatEur(pr.bustaBonusShare, true)}
+                          +{formatEur(pr.bustaBonusShare, true)}
                         </div>
                       )}
                     </td>
@@ -1250,24 +1143,10 @@ export function EventDetail({
         </div>
       </section>
 
-      {/* 3. Sezione Prevendite — Smart "Totale − Lollo → Ciccio" + Zero-Scroll Mobile Cards */}
+      {/* 3. Sezione Prevendite (mode controlled exclusively from Settings) */}
       <section className="mb-6">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5 px-1">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h2 className="text-[18px] font-semibold">Prevendite</h2>
-            {summary.promoterOrder.length === 2 && (
-              <SegmentedControl<PresaleInputMode>
-                ariaLabel="Modalità inserimento prevendite"
-                size="sm"
-                value={event.presale_input_mode}
-                onChange={(m) => onUpdateEvent(event.id, { presale_input_mode: m })}
-                options={[
-                  { value: 'total_minus_primary', label: 'Totale − Lollo' },
-                  { value: 'per_pr', label: 'Per PR' },
-                ]}
-              />
-            )}
-          </div>
+          <h2 className="text-[18px] font-semibold">Prevendite</h2>
           <button
             type="button"
             onClick={() => setShowImportModal(true)}
@@ -1279,14 +1158,6 @@ export function EventDetail({
           </button>
         </div>
 
-        {isTotalMinusMode && (
-          <p className="text-[12px] mb-2 px-1" style={{ color: 'var(--ink-secondary)' }}>
-            Inserisci il <strong>Totale serata</strong> e i dati di{' '}
-            <strong>{getPromoter(primaryPrId).display_name}</strong>: le prevendite di{' '}
-            <strong>{getPromoter(secondaryPrId).display_name}</strong> si calcolano in automatico.
-          </p>
-        )}
-
         {/* Mobile Prevendite Stacked Cards (ZERO horizontal scroll!) */}
         <div className="md:hidden space-y-2.5">
           {isTotalMinusMode && (
@@ -1296,20 +1167,7 @@ export function EventDetail({
                 borderLeft: '3px solid var(--accent)',
               }}
             >
-              <div className="flex items-center justify-between">
-                <span className="text-[14px] font-bold">Totale serata</span>
-                {summary.revenuePresales > 0 &&
-                  summary.oneToOnePresales !== summary.revenuePresales && (
-                    <button
-                      type="button"
-                      onClick={() => handleTotalPresaleEdit('one_to_one', summary.revenuePresales)}
-                      className="rounded-full px-2 py-0.5 text-[11px] font-semibold apple-press cursor-pointer"
-                      style={{ backgroundColor: 'var(--accent-subtle)', color: 'var(--accent)' }}
-                    >
-                      1to1 = Incasso
-                    </button>
-                  )}
-              </div>
+              <div className="text-[14px] font-bold">Totale serata</div>
               <div className="grid grid-cols-3 gap-2">
                 <div className="min-w-0">
                   <span className="block text-[11px] mb-1 truncate" style={{ color: 'var(--ink-secondary)' }}>
@@ -1324,22 +1182,22 @@ export function EventDetail({
                 </div>
                 <div className="min-w-0">
                   <span className="block text-[11px] mb-1 truncate" style={{ color: 'var(--ink-secondary)' }}>
-                    Incasso (€)
+                    € Tot
                   </span>
                   <NumericCellInput
                     value={summary.revenuePresales}
                     onCommit={(v) => handleTotalPresaleEdit('revenue', v)}
-                    ariaLabel="Incasso totale prevendite"
+                    ariaLabel="€ Tot prevendite serata"
                   />
                 </div>
                 <div className="min-w-0">
                   <span className="block text-[11px] mb-1 truncate" style={{ color: 'var(--ink-secondary)' }}>
-                    1-to-1 (€)
+                    € Cash
                   </span>
                   <NumericCellInput
                     value={summary.oneToOnePresales}
                     onCommit={(v) => handleTotalPresaleEdit('one_to_one', v)}
-                    ariaLabel="Totale One to One prevendite"
+                    ariaLabel="€ Cash prevendite serata"
                   />
                 </div>
               </div>
@@ -1362,39 +1220,12 @@ export function EventDetail({
                   opacity: isDerived ? 0.92 : 1,
                 }}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="h-2.5 w-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: meta.color }}
-                    />
-                    <span className="text-[14px] font-semibold">{meta.display_name}</span>
-                    {isDerived && (
-                      <span
-                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                        style={{
-                          backgroundColor: 'var(--bg-surface-secondary)',
-                          color: 'var(--ink-secondary)',
-                        }}
-                      >
-                        Auto = Totale − {getPromoter(primaryPrId).display_name}
-                      </span>
-                    )}
-                  </div>
-                  {!isDerived && rev > 0 && oto !== rev && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        isTotalMinusMode && pid === primaryPrId
-                          ? handlePrimaryPresaleEditInTotalMode('one_to_one', rev)
-                          : onUpsertPresale(event.id, pid, { one_to_one: rev })
-                      }
-                      className="rounded-full px-2 py-0.5 text-[11px] font-semibold apple-press cursor-pointer"
-                      style={{ backgroundColor: 'var(--accent-subtle)', color: 'var(--accent)' }}
-                    >
-                      1to1 = Incasso
-                    </button>
-                  )}
+                <div className="flex items-center gap-2">
+                  <span
+                    className="h-2.5 w-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: meta.color }}
+                  />
+                  <span className="text-[14px] font-semibold">{meta.display_name}</span>
                 </div>
 
                 {isDerived ? (
@@ -1410,13 +1241,13 @@ export function EventDetail({
                     </div>
                     <div className="min-w-0">
                       <span className="block text-[10px] truncate" style={{ color: 'var(--ink-secondary)' }}>
-                        Incasso
+                        € Tot
                       </span>
                       <span className="block text-[14px] sm:text-[15px] font-bold truncate">{formatEur(rev)}</span>
                     </div>
                     <div className="min-w-0">
                       <span className="block text-[10px] truncate" style={{ color: 'var(--ink-secondary)' }}>
-                        One to One
+                        € Cash
                       </span>
                       <span className="block text-[14px] sm:text-[15px] font-bold truncate">{formatEur(oto)}</span>
                     </div>
@@ -1435,12 +1266,12 @@ export function EventDetail({
                             ? handlePrimaryPresaleEditInTotalMode('quantity', v)
                             : onUpsertPresale(event.id, pid, { quantity: v })
                         }
-                        ariaLabel={`Prevendite ${meta.display_name}`}
+                        ariaLabel={`N° Preve ${meta.display_name}`}
                       />
                     </div>
                     <div className="min-w-0">
                       <span className="block text-[11px] mb-1 truncate" style={{ color: 'var(--ink-secondary)' }}>
-                        Incasso (€)
+                        € Tot
                       </span>
                       <NumericCellInput
                         value={rev}
@@ -1449,12 +1280,12 @@ export function EventDetail({
                             ? handlePrimaryPresaleEditInTotalMode('revenue', v)
                             : onUpsertPresale(event.id, pid, { revenue: v })
                         }
-                        ariaLabel={`Incasso ${meta.display_name}`}
+                        ariaLabel={`€ Tot ${meta.display_name}`}
                       />
                     </div>
                     <div className="min-w-0">
                       <span className="block text-[11px] mb-1 truncate" style={{ color: 'var(--ink-secondary)' }}>
-                        1-to-1 (€)
+                        € Cash
                       </span>
                       <NumericCellInput
                         value={oto}
@@ -1463,7 +1294,7 @@ export function EventDetail({
                             ? handlePrimaryPresaleEditInTotalMode('one_to_one', v)
                             : onUpsertPresale(event.id, pid, { one_to_one: v })
                         }
-                        ariaLabel={`One to One ${meta.display_name}`}
+                        ariaLabel={`€ Cash ${meta.display_name}`}
                       />
                     </div>
                   </div>
@@ -1479,7 +1310,7 @@ export function EventDetail({
             >
               <span>Totale</span>
               <span>
-                {formatInt(summary.pxPresales)} preve · {formatEur(summary.revenuePresales)} · 1to1{' '}
+                {formatInt(summary.pxPresales)} preve · {formatEur(summary.revenuePresales)} · Cash{' '}
                 {formatEur(summary.oneToOnePresales)}
               </span>
             </div>
@@ -1488,7 +1319,7 @@ export function EventDetail({
 
         {/* Desktop Prevendite Table */}
         <div className="hidden md:block apple-surface rounded-[16px] overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[480px]">
+          <table className="w-full text-left border-collapse min-w-[460px]">
             <thead>
               <tr
                 className="text-[12px] font-medium"
@@ -1498,25 +1329,15 @@ export function EventDetail({
                 }}
               >
                 <th className="py-3 pl-4 pr-2 font-medium">Promoter</th>
-                <th className="py-3 px-2 text-right font-medium w-[140px]">Totale prevendite</th>
-                <th className="py-3 px-2 text-right font-medium w-[150px]">Incasso (€)</th>
-                <th className="py-3 pl-2 pr-4 text-right font-medium w-[180px]">
-                  Totale One to One (€)
-                </th>
+                <th className="py-3 px-2 text-right font-medium w-[140px]">N° Preve</th>
+                <th className="py-3 px-2 text-right font-medium w-[150px]">€ Tot</th>
+                <th className="py-3 pl-2 pr-4 text-right font-medium w-[150px]">€ Cash</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--separator)] text-[14px]">
               {isTotalMinusMode && (
                 <tr style={{ backgroundColor: 'var(--bg-hover)' }}>
-                  <td className="py-2.5 pl-4 pr-2 font-semibold">
-                    Totale serata
-                    <span
-                      className="ml-2 text-[11px] font-normal"
-                      style={{ color: 'var(--ink-tertiary)' }}
-                    >
-                      (calcola {getPromoter(secondaryPrId).display_name} in automatico)
-                    </span>
-                  </td>
+                  <td className="py-2.5 pl-4 pr-2 font-semibold">Totale serata</td>
                   <td className="py-2.5 px-2">
                     <NumericCellInput
                       value={summary.pxPresales}
@@ -1530,36 +1351,16 @@ export function EventDetail({
                       value={summary.revenuePresales}
                       prefix="€"
                       onCommit={(v) => handleTotalPresaleEdit('revenue', v)}
-                      ariaLabel="Incasso totale prevendite"
+                      ariaLabel="€ Tot prevendite serata"
                     />
                   </td>
                   <td className="py-2.5 pl-2 pr-4">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <NumericCellInput
-                        value={summary.oneToOnePresales}
-                        prefix="€"
-                        onCommit={(v) => handleTotalPresaleEdit('one_to_one', v)}
-                        ariaLabel="Totale One to One prevendite"
-                        className="flex-1"
-                      />
-                      {summary.revenuePresales > 0 &&
-                        summary.oneToOnePresales !== summary.revenuePresales && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleTotalPresaleEdit('one_to_one', summary.revenuePresales)
-                            }
-                            title="Imposta One to One uguale all'Incasso"
-                            className="shrink-0 rounded-[7px] px-2 py-1 text-[11px] font-semibold apple-press cursor-pointer"
-                            style={{
-                              backgroundColor: 'var(--accent-subtle)',
-                              color: 'var(--accent)',
-                            }}
-                          >
-                            = Inc.
-                          </button>
-                        )}
-                    </div>
+                    <NumericCellInput
+                      value={summary.oneToOnePresales}
+                      prefix="€"
+                      onCommit={(v) => handleTotalPresaleEdit('one_to_one', v)}
+                      ariaLabel="€ Cash prevendite serata"
+                    />
                   </td>
                 </tr>
               )}
@@ -1581,17 +1382,6 @@ export function EventDetail({
                           style={{ backgroundColor: meta.color }}
                         />
                         <span className="font-medium">{meta.full_name}</span>
-                        {isDerivedSecondary && (
-                          <span
-                            className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                            style={{
-                              backgroundColor: 'var(--bg-surface-secondary)',
-                              color: 'var(--ink-secondary)',
-                            }}
-                          >
-                            Auto
-                          </span>
-                        )}
                       </div>
                     </td>
                     <td className="py-2.5 px-2">
@@ -1608,7 +1398,7 @@ export function EventDetail({
                               ? handlePrimaryPresaleEditInTotalMode('quantity', v)
                               : onUpsertPresale(event.id, pid, { quantity: v })
                           }
-                          ariaLabel={`Totale prevendite ${meta.display_name}`}
+                          ariaLabel={`N° Preve ${meta.display_name}`}
                         />
                       )}
                     </td>
@@ -1626,7 +1416,7 @@ export function EventDetail({
                               ? handlePrimaryPresaleEditInTotalMode('revenue', v)
                               : onUpsertPresale(event.id, pid, { revenue: v })
                           }
-                          ariaLabel={`Incasso prevendite ${meta.display_name}`}
+                          ariaLabel={`€ Tot ${meta.display_name}`}
                         />
                       )}
                     </td>
@@ -1636,37 +1426,16 @@ export function EventDetail({
                           {formatEur(oto)}
                         </div>
                       ) : (
-                        <div className="flex items-center justify-end gap-1.5">
-                          <NumericCellInput
-                            value={oto}
-                            prefix="€"
-                            onCommit={(v) =>
-                              isTotalMinusMode && pid === primaryPrId
-                                ? handlePrimaryPresaleEditInTotalMode('one_to_one', v)
-                                : onUpsertPresale(event.id, pid, { one_to_one: v })
-                            }
-                            ariaLabel={`One to One ${meta.display_name}`}
-                            className="flex-1"
-                          />
-                          {rev > 0 && oto !== rev && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                isTotalMinusMode && pid === primaryPrId
-                                  ? handlePrimaryPresaleEditInTotalMode('one_to_one', rev)
-                                  : onUpsertPresale(event.id, pid, { one_to_one: rev })
-                              }
-                              title="Imposta One to One uguale all'Incasso"
-                              className="shrink-0 rounded-[7px] px-2 py-1 text-[11px] font-semibold apple-press cursor-pointer"
-                              style={{
-                                backgroundColor: 'var(--accent-subtle)',
-                                color: 'var(--accent)',
-                              }}
-                            >
-                              = Inc.
-                            </button>
-                          )}
-                        </div>
+                        <NumericCellInput
+                          value={oto}
+                          prefix="€"
+                          onCommit={(v) =>
+                            isTotalMinusMode && pid === primaryPrId
+                              ? handlePrimaryPresaleEditInTotalMode('one_to_one', v)
+                              : onUpsertPresale(event.id, pid, { one_to_one: v })
+                          }
+                          ariaLabel={`€ Cash ${meta.display_name}`}
+                        />
                       )}
                     </td>
                   </tr>
@@ -1689,20 +1458,6 @@ export function EventDetail({
             </tbody>
           </table>
         </div>
-
-        {/* Integrated TicketSMS XLS/CSV Report Table right inside Prevendite */}
-        {ticketSmsEvent && onTriggerTicketSmsSync && (
-          <TicketSmsPresalesTable
-            eventTitle={event.title}
-            tsEvent={ticketSmsEvent}
-            reportRows={ticketSmsReportRows}
-            ticketTypes={ticketSmsTicketTypes}
-            syncStatus={ticketSmsSyncStatus}
-            syncing={ticketSmsSyncing}
-            syncElapsedSec={ticketSmsSyncElapsedSec}
-            onTriggerSync={onTriggerTicketSmsSync}
-          />
-        )}
       </section>
 
       {/* 4. Sezione Tavoli */}
@@ -2658,19 +2413,36 @@ export function EventDetail({
             />
           </div>
 
-          <div className="flex justify-between items-center pt-2">
-            <button
-              type="button"
-              onClick={() => {
-                setShowEditMeta(false);
-                onDuplicateEvent(event);
-              }}
-              className="inline-flex items-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[13px] font-medium apple-press cursor-pointer"
-              style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
-            >
-              <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-              Duplica serata
-            </button>
+          <div className="flex flex-wrap justify-between items-center gap-2 pt-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEditMeta(false);
+                  onDuplicateEvent(event);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-[10px] px-3 py-2 text-[13px] font-medium apple-press cursor-pointer"
+                style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
+              >
+                <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                Duplica
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEditMeta(false);
+                  setShowDeleteConfirm(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-[10px] px-3 py-2 text-[13px] font-medium apple-press cursor-pointer"
+                style={{
+                  backgroundColor: 'var(--status-red-bg)',
+                  color: 'var(--status-red)',
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                Elimina
+              </button>
+            </div>
             <button
               type="button"
               onClick={() => setShowEditMeta(false)}
@@ -2687,12 +2459,8 @@ export function EventDetail({
       <AppleModal
         open={showImportModal}
         onClose={() => setShowImportModal(false)}
-        title="Importa report prevendite"
-        subtitle={
-          ownerPromoterId === 'lollo'
-            ? 'Incolla righe da TicketSMS, Excel o Google Sheets (con colonne Promoter, Quantità, Incasso, One to One).'
-            : 'Incolla righe da Excel o Google Sheets (con colonne Promoter, Quantità, Incasso, One to One).'
-        }
+        title="Importa prevendite"
+        subtitle="Incolla righe da Excel o Google Sheets (Promoter, N° Preve, € Tot, € Cash)."
         maxWidth="max-w-[560px]"
       >
         <div className="space-y-4">
@@ -2719,7 +2487,7 @@ export function EventDetail({
                 >
                   <span className="font-semibold">{getPromoter(r.promoterId).full_name}</span>
                   <span>
-                    {r.quantity} preve · Incasso {formatEur(r.revenue)} · 1to1{' '}
+                    {r.quantity} preve · € Tot {formatEur(r.revenue)} · € Cash{' '}
                     {formatEur(r.one_to_one)}
                   </span>
                 </div>

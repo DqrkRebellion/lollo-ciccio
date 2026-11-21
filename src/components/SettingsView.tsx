@@ -48,7 +48,21 @@ import type {
   ThemePreference,
   Venue,
 } from '../types';
+import type { TicketSmsSyncStatus } from '../types/ticketsms';
 import type { SyncState } from '../hooks/useAppData';
+
+function formatSyncTimeIt(iso: string | null | undefined): string {
+  if (!iso) return 'In attesa';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return 'In attesa';
+  return new Intl.DateTimeFormat('it-IT', {
+    timeZone: 'Europe/Rome',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(d);
+}
 
 const APPLE_COLORS = [
   '#0071E3',
@@ -74,6 +88,7 @@ export function SettingsView({
   themePreference,
   onChangeTheme,
   syncState,
+  ticketSmsSyncStatus = null,
   userEmail,
   userDisplayName,
   userPromoterId,
@@ -91,6 +106,7 @@ export function SettingsView({
   themePreference: ThemePreference;
   onChangeTheme: (pref: ThemePreference) => void;
   syncState: SyncState;
+  ticketSmsSyncStatus?: TicketSmsSyncStatus | null;
   userEmail: string;
   userDisplayName: string;
   userPromoterId: string;
@@ -280,11 +296,8 @@ export function SettingsView({
 
   return (
     <div className="mx-auto w-full max-w-[1000px] px-4 sm:px-6 lg:px-8 pt-5 pb-28 lg:pb-12">
-      <div className="mb-6">
+      <div className="mb-5">
         <h1 className="text-[28px] sm:text-[34px] font-bold tracking-tight">Impostazioni</h1>
-        <p className="mt-0.5 text-[14px]" style={{ color: 'var(--ink-secondary)' }}>
-          Configura provvigioni, bonus, locali, team PR e preferenze sincronizzate in cloud
-        </p>
       </div>
 
       <div className="flex flex-col md:flex-row gap-6">
@@ -730,16 +743,23 @@ export function SettingsView({
 
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4">
                   <div>
-                    <div className="text-[14px] font-medium">Inserimento prevendite predefinito</div>
+                    <div className="text-[14px] font-medium">Modalità inserimento prevendite</div>
                     <div className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
-                      Scegli tra inserimento diretto o formula Totale − Lollo = Ciccio
+                      Scegli tra inserimento per singolo PR o Totale − Lollo (attiva su tutte le serate)
                     </div>
                   </div>
                   <SegmentedControl<PresaleInputMode>
-                    ariaLabel="Inserimento prevendite predefinito"
+                    ariaLabel="Modalità inserimento prevendite"
                     size="sm"
                     value={settings.default_presale_input_mode}
-                    onChange={(m) => onUpdateSettings({ default_presale_input_mode: m })}
+                    onChange={(m) => {
+                      onUpdateSettings({ default_presale_input_mode: m });
+                      toast.success(
+                        m === 'total_minus_primary'
+                          ? 'Modalità prevendite: Totale − Lollo'
+                          : 'Modalità prevendite: Per PR'
+                      );
+                    }}
                     options={[
                       { value: 'per_pr', label: 'Per PR' },
                       { value: 'total_minus_primary', label: 'Totale − Lollo' },
@@ -1057,6 +1077,54 @@ export function SettingsView({
           {section === 'data' && (
             <div className="apple-surface rounded-[16px] overflow-hidden">
               <div className="apple-list">
+                {userPromoterId === 'lollo' && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 px-4 sm:px-5 py-4">
+                    <div className="min-w-0">
+                      <div className="text-[14px] font-medium">Sincronizzazione TicketSMS</div>
+                      <div className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
+                        Automatica ogni giorno alle 15:00 · Ultimo sync:{' '}
+                        {formatSyncTimeIt(ticketSmsSyncStatus?.synced_at)}
+                      </div>
+                      {ticketSmsSyncStatus &&
+                        (ticketSmsSyncStatus.status === 'session_expired' ||
+                          ticketSmsSyncStatus.status === 'error') && (
+                          <div
+                            className="mt-1 text-[12px] font-medium"
+                            style={{
+                              color:
+                                ticketSmsSyncStatus.status === 'session_expired'
+                                  ? 'var(--status-orange)'
+                                  : 'var(--status-red)',
+                            }}
+                          >
+                            {ticketSmsSyncStatus.status === 'session_expired'
+                              ? 'Sessione scaduta: aggiorna il cookie TicketSMS'
+                              : ticketSmsSyncStatus.message || 'Errore ultimo sync'}
+                          </div>
+                        )}
+                    </div>
+                    <span
+                      className="rounded-full px-2.5 py-1 text-[11px] font-semibold shrink-0 self-start sm:self-auto"
+                      style={{
+                        backgroundColor:
+                          ticketSmsSyncStatus?.status === 'session_expired'
+                            ? 'var(--status-orange-bg)'
+                            : ticketSmsSyncStatus?.status === 'error'
+                              ? 'var(--status-red-bg)'
+                              : 'var(--status-green-bg)',
+                        color:
+                          ticketSmsSyncStatus?.status === 'session_expired'
+                            ? 'var(--status-orange)'
+                            : ticketSmsSyncStatus?.status === 'error'
+                              ? 'var(--status-red)'
+                              : 'var(--status-green)',
+                      }}
+                    >
+                      Ogni giorno · 15:00
+                    </span>
+                  </div>
+                )}
+
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 px-4 sm:px-5 py-4">
                   <div className="min-w-0">
                     <div className="text-[14px] font-medium">Esporta riepilogo CSV (Excel / Sheets)</div>
