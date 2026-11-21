@@ -58,16 +58,14 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: 'Sessione non valida o scaduta' }, 401, origin);
     }
 
-    // 1b. Strictly restrict TicketSMS sync to Lollo & Ciccio team profiles
+    // 1b. Strictly restrict TicketSMS sync to Lollo's profile
     const metaPromoter = String(userData.user.user_metadata?.promoter_id || '').toLowerCase();
     const userEmail = String(userData.user.email || '').toLowerCase();
-    const isAuthorizedTeam =
-      metaPromoter === 'lollo' ||
-      metaPromoter === 'ciccio' ||
-      (!metaPromoter && (userEmail.startsWith('lollo@') || userEmail.startsWith('ciccio@')));
-    if (!isAuthorizedTeam) {
+    const isLollo =
+      metaPromoter === 'lollo' || (!metaPromoter && userEmail.startsWith('lollo@'));
+    if (!isLollo) {
       return jsonResponse(
-        { error: 'La sincronizzazione TicketSMS è riservata ai profili Lollo e Ciccio' },
+        { error: 'La sincronizzazione TicketSMS è riservata al profilo Lollo' },
         403,
         origin
       );

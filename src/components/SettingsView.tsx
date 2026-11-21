@@ -89,6 +89,7 @@ export function SettingsView({
   onChangeTheme,
   syncState,
   ticketSmsSyncStatus = null,
+  onOpenTicketSmsIos,
   userEmail,
   userDisplayName,
   userPromoterId,
@@ -107,6 +108,7 @@ export function SettingsView({
   onChangeTheme: (pref: ThemePreference) => void;
   syncState: SyncState;
   ticketSmsSyncStatus?: TicketSmsSyncStatus | null;
+  onOpenTicketSmsIos?: () => void;
   userEmail: string;
   userDisplayName: string;
   userPromoterId: string;
@@ -1077,12 +1079,14 @@ export function SettingsView({
           {section === 'data' && (
             <div className="apple-surface rounded-[16px] overflow-hidden">
               <div className="apple-list">
-                {(userPromoterId === 'lollo' || userPromoterId === 'ciccio') && (
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 px-4 sm:px-5 py-4">
+                {userPromoterId === 'lollo' && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4 px-4 sm:px-5 py-4">
                     <div className="min-w-0">
-                      <div className="text-[14px] font-medium">Sincronizzazione TicketSMS</div>
+                      <div className="text-[14px] font-medium">
+                        Sincronizzazione TicketSMS · Comando Rapido iOS
+                      </div>
                       <div className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
-                        Automatica ogni giorno alle 15:00 · Ultimo sync:{' '}
+                        Aggiorna Lollo e Reverse direttamente da Safari su iPhone · Ultimo sync:{' '}
                         {formatSyncTimeIt(ticketSmsSyncStatus?.synced_at)}
                       </div>
                       {ticketSmsSyncStatus &&
@@ -1099,30 +1103,25 @@ export function SettingsView({
                           >
                             {ticketSmsSyncStatus.message ||
                               (ticketSmsSyncStatus.status === 'session_expired'
-                                ? 'Sessione scaduta: aggiorna il cookie TicketSMS'
+                                ? 'Sessione scaduta: accedi su my.ticketsms.it da Safari'
                                 : 'Errore ultimo sync')}
                           </div>
                         )}
                     </div>
-                    <span
-                      className="rounded-full px-2.5 py-1 text-[11px] font-semibold shrink-0 self-start sm:self-auto"
-                      style={{
-                        backgroundColor:
-                          ticketSmsSyncStatus?.status === 'session_expired'
-                            ? 'var(--status-orange-bg)'
-                            : ticketSmsSyncStatus?.status === 'error'
-                              ? 'var(--status-red-bg)'
-                              : 'var(--status-green-bg)',
-                        color:
-                          ticketSmsSyncStatus?.status === 'session_expired'
-                            ? 'var(--status-orange)'
-                            : ticketSmsSyncStatus?.status === 'error'
-                              ? 'var(--status-red)'
-                              : 'var(--status-green)',
-                      }}
-                    >
-                      Ogni giorno · 15:00
-                    </span>
+                    {onOpenTicketSmsIos && (
+                      <button
+                        type="button"
+                        onClick={onOpenTicketSmsIos}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[13px] font-semibold apple-press cursor-pointer shrink-0 self-start sm:self-auto"
+                        style={{
+                          backgroundColor: 'var(--accent-subtle)',
+                          color: 'var(--accent)',
+                        }}
+                      >
+                        <Smartphone className="h-3.5 w-3.5" aria-hidden="true" />
+                        Configura / Aggiorna
+                      </button>
+                    )}
                   </div>
                 )}
 

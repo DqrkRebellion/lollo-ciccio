@@ -21,6 +21,7 @@ import { AppShell, type NavTab } from './components/AppShell';
 import { EventWorkspace } from './components/EventWorkspace';
 import { NewEventModal } from './components/NewEventModal';
 import { SpotlightSearch } from './components/SpotlightSearch';
+import { TicketSmsIosModal } from './components/TicketSmsIosModal';
 
 const StaffWorkspace = lazy(() =>
   import('./components/StaffWorkspace').then((m) => ({ default: m.StaffWorkspace }))
@@ -54,6 +55,7 @@ export default function App() {
   const [cashEventId, setCashEventId] = useState<string | null>(null);
   const [newEventOpen, setNewEventOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [ticketSmsModalOpen, setTicketSmsModalOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState<boolean>(() =>
     typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : true
   );
@@ -102,7 +104,7 @@ export default function App() {
 
   const ownerPromoterId: 'lollo' | 'ciccio' =
     currentAccount.promoterId === 'ciccio' ? 'ciccio' : 'lollo';
-  const ticketSmsEnabled = ownerPromoterId === 'lollo' || ownerPromoterId === 'ciccio';
+  const ticketSmsEnabled = ownerPromoterId === 'lollo';
 
   const isUnlocked = Boolean(session) && visitUnlocked;
   const data = useAppData(isUnlocked);
@@ -283,7 +285,9 @@ export default function App() {
                   onRedo={data.redo}
                   onOpenNewEvent={() => setNewEventOpen(true)}
                   ticketSmsSyncing={ticketSmsData.syncing}
-                  onTriggerTicketSmsSync={ticketSmsEnabled ? ticketSmsData.triggerSync : undefined}
+                  onTriggerTicketSmsSync={
+                    ticketSmsEnabled ? async () => setTicketSmsModalOpen(true) : undefined
+                  }
                   onUpdateEvent={data.updateEvent}
                   onDuplicateEvent={async (ev) => {
                     const created = await data.duplicateEvent(ev);
@@ -345,7 +349,9 @@ export default function App() {
                     onRedo={data.redo}
                     onOpenNewEvent={() => setNewEventOpen(true)}
                     ticketSmsSyncing={ticketSmsData.syncing}
-                    onTriggerTicketSmsSync={ticketSmsEnabled ? ticketSmsData.triggerSync : undefined}
+                    onTriggerTicketSmsSync={
+                      ticketSmsEnabled ? async () => setTicketSmsModalOpen(true) : undefined
+                    }
                     onOpenCashCollection={(eventId) => {
                       setCashEventId(eventId);
                       setActiveTab('cash');
@@ -417,6 +423,9 @@ export default function App() {
                     onChangeTheme={setPreference}
                     syncState={data.syncState}
                     ticketSmsSyncStatus={ticketSmsEnabled ? ticketSmsData.syncStatus : null}
+                    onOpenTicketSmsIos={
+                      ticketSmsEnabled ? () => setTicketSmsModalOpen(true) : undefined
+                    }
                     userEmail={currentAccount.email}
                     userDisplayName={currentAccount.displayName}
                     userPromoterId={currentAccount.promoterId}
@@ -471,6 +480,17 @@ export default function App() {
             summaries={data.summaries}
             onSelectEvent={handleOpenEventFromAnywhere}
           />
+
+          {ticketSmsEnabled && (
+            <TicketSmsIosModal
+              open={ticketSmsModalOpen}
+              onClose={() => setTicketSmsModalOpen(false)}
+              syncStatus={ticketSmsData.syncStatus}
+              onRefreshNow={async () => {
+                await Promise.all([data.fetchAll(true), staffData.fetchStaff(true)]);
+              }}
+            />
+          )}
         </AppShell>
       )}
     </>
