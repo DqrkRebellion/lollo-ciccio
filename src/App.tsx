@@ -155,9 +155,8 @@ export default function App() {
   const openMancantiCount = useMemo(() => {
     let count = 0;
     for (const ev of data.events) {
-      if (ev.era !== '2PX') continue;
       const s = data.summaries.get(ev.id);
-      if (s && s.mancantiTotal > 0.01) count += 1;
+      if (s && Math.abs(s.mancantiTotal) > 0.01) count += 1;
     }
     return count;
   }, [data.events, data.summaries]);

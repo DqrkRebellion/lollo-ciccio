@@ -90,6 +90,13 @@ export function useStaffData(
   const cashTxRef = useRef<StaffCashTransaction[]>([]);
   cashTxRef.current = cashTransactions;
   const reloadTimerRef = useRef<number | null>(null);
+  const savingCounterRef = useRef(0);
+  const mutationEpochRef = useRef(0);
+  const lastLocalSaveEndAtRef = useRef(0);
+  const pendingRemoteReloadRef = useRef(false);
+  const fetchSeqRef = useRef(0);
+  const rowQueueRef = useRef(new Map<string, Promise<void>>());
+  const scheduleReloadRef = useRef<() => void>(() => {});
   const onLinkedTablesChangedRef = useRef(onLinkedTablesChanged);
   onLinkedTablesChangedRef.current = onLinkedTablesChanged;
 
@@ -97,8 +104,43 @@ export function useStaffData(
     onLinkedTablesChangedRef.current?.();
   }, []);
 
+  const startSaving = useCallback(() => {
+    savingCounterRef.current += 1;
+    mutationEpochRef.current += 1;
+    if (reloadTimerRef.current !== null) {
+      window.clearTimeout(reloadTimerRef.current);
+      reloadTimerRef.current = null;
+    }
+  }, []);
+
+  const endSaving = useCallback(() => {
+    savingCounterRef.current = Math.max(0, savingCounterRef.current - 1);
+    mutationEpochRef.current += 1;
+    lastLocalSaveEndAtRef.current = Date.now();
+    if (savingCounterRef.current === 0 && pendingRemoteReloadRef.current) {
+      pendingRemoteReloadRef.current = false;
+      scheduleReloadRef.current();
+    }
+  }, []);
+
+  const enqueueRowOp = useCallback((rowId: string, op: () => Promise<void>): Promise<void> => {
+    const prev = rowQueueRef.current.get(rowId) ?? Promise.resolve();
+    const next = prev.catch(() => undefined).then(op);
+    rowQueueRef.current.set(rowId, next);
+    next.finally(() => {
+      if (rowQueueRef.current.get(rowId) === next) {
+        rowQueueRef.current.delete(rowId);
+      }
+    });
+    return next;
+  }, []);
+
   const fetchStaff = useCallback(
-    async (silent = false) => {
+    async (silent = false, force = false) => {
+      if (silent && !force && savingCounterRef.current > 0) return;
+
+      const mySeq = ++fetchSeqRef.current;
+      const startEpoch = mutationEpochRef.current;
       if (!silent) setLoading(true);
       try {
         const [groupRes, plansRes, membersRes, preveRes, tavRes, cashRes] = await Promise.all([
@@ -144,6 +186,15 @@ export function useStaffData(
           tavRes.error ||
           cashRes.error;
         if (firstErr) throw firstErr;
+
+        if (mySeq !== fetchSeqRef.current) return;
+        if (
+          silent &&
+          !force &&
+          (savingCounterRef.current > 0 || mutationEpochRef.current !== startEpoch)
+        ) {
+          return;
+        }
 
         if (groupRes.data) {
           setGroup({
@@ -273,9 +324,25 @@ export function useStaffData(
     fetchStaff(false);
 
     const scheduleReload = () => {
-      if (reloadTimerRef.current) window.clearTimeout(reloadTimerRef.current);
-      reloadTimerRef.current = window.setTimeout(() => fetchStaff(true), 350);
+      if (savingCounterRef.current > 0) {
+        pendingRemoteReloadRef.current = true;
+        return;
+      }
+      if (reloadTimerRef.current !== null) {
+        window.clearTimeout(reloadTimerRef.current);
+      }
+      const msSinceLocalWrite = Date.now() - lastLocalSaveEndAtRef.current;
+      const delay = msSinceLocalWrite < 1600 ? 1400 : 350;
+      reloadTimerRef.current = window.setTimeout(() => {
+        reloadTimerRef.current = null;
+        if (savingCounterRef.current > 0) {
+          pendingRemoteReloadRef.current = true;
+          return;
+        }
+        fetchStaff(true);
+      }, delay);
     };
+    scheduleReloadRef.current = scheduleReload;
 
     const ch = supabase
       .channel(`lc-staff-${ownerPromoterId}`)
@@ -309,7 +376,11 @@ export function useStaffData(
       .subscribe();
 
     return () => {
-      if (reloadTimerRef.current) window.clearTimeout(reloadTimerRef.current);
+      scheduleReloadRef.current = () => {};
+      if (reloadTimerRef.current !== null) {
+        window.clearTimeout(reloadTimerRef.current);
+        reloadTimerRef.current = null;
+      }
       supabase.removeChannel(ch);
     };
   }, [isAuthenticated, ownerPromoterId, fetchStaff]);
@@ -399,7 +470,7 @@ export function useStaffData(
         );
       if (error) {
         toast.error('Errore salvataggio impostazioni staff');
-        fetchStaff(true);
+        fetchStaff(true, true);
       } else {
         toast.success('Impostazioni staff aggiornate');
       }
@@ -439,7 +510,7 @@ export function useStaffData(
           });
           if (error) throw error;
         }
-        await fetchStaff(true);
+        await fetchStaff(true, true);
         toast.success(`Piano “${plan.name}” salvato`);
       } catch (err) {
         console.error(err);
@@ -481,7 +552,7 @@ export function useStaffData(
             .select()
             .single();
           if (error) throw error;
-          await fetchStaff(true);
+          await fetchStaff(true, true);
           toast.success(`Sotto-PR “${data.full_name}” aggiornato`);
           return data as StaffMember;
         } else {
@@ -502,7 +573,7 @@ export function useStaffData(
             .select()
             .single();
           if (error) throw error;
-          await fetchStaff(true);
+          await fetchStaff(true, true);
           return data as StaffMember;
         }
       } catch (err) {
@@ -522,53 +593,76 @@ export function useStaffData(
       setPresales((prev) => [...prev, { ...row, id: tempId }]);
       const payload: Record<string, unknown> = { ...row };
       if (tempId.startsWith('temp-')) delete payload.id;
-      const { data, error } = await supabase
-        .from('staff_event_presales')
-        .insert(payload)
-        .select()
-        .single();
-      if (error) {
-        setPresales((prev) => prev.filter((p) => p.id !== tempId));
-        throw error;
+      startSaving();
+      try {
+        const { data, error } = await supabase
+          .from('staff_event_presales')
+          .insert(payload)
+          .select()
+          .single();
+        if (error) {
+          setPresales((prev) => prev.filter((p) => p.id !== tempId));
+          throw error;
+        }
+        const saved: StaffEventPresale = {
+          id: String(data.id),
+          owner_promoter_id: ownerPromoterId,
+          event_id: String(data.event_id),
+          staff_member_id: data.staff_member_id ? String(data.staff_member_id) : null,
+          promoter_name: String(data.promoter_name ?? ''),
+          quantity: toNum(data.quantity, 0),
+          revenue: toNum(data.revenue, 0),
+          scarico: toNum(data.scarico, 0),
+          note_amount: toNum(data.note_amount, 0),
+          note_text: String(data.note_text ?? ''),
+          paid_cash: toNum(data.paid_cash, 0),
+          busta_override:
+            data.busta_override !== null && data.busta_override !== undefined
+              ? toNum(data.busta_override)
+              : null,
+          is_busta_paid: Boolean(data.is_busta_paid),
+          sort_order: toNum(data.sort_order, 0),
+        };
+        setPresales((prev) => prev.map((p) => (p.id === tempId ? saved : p)));
+        return saved;
+      } finally {
+        endSaving();
       }
-      const saved: StaffEventPresale = {
-        id: String(data.id),
-        owner_promoter_id: ownerPromoterId,
-        event_id: String(data.event_id),
-        staff_member_id: data.staff_member_id ? String(data.staff_member_id) : null,
-        promoter_name: String(data.promoter_name ?? ''),
-        quantity: toNum(data.quantity, 0),
-        revenue: toNum(data.revenue, 0),
-        scarico: toNum(data.scarico, 0),
-        note_amount: toNum(data.note_amount, 0),
-        note_text: String(data.note_text ?? ''),
-        paid_cash: toNum(data.paid_cash, 0),
-        busta_override:
-          data.busta_override !== null && data.busta_override !== undefined
-            ? toNum(data.busta_override)
-            : null,
-        is_busta_paid: Boolean(data.is_busta_paid),
-        sort_order: toNum(data.sort_order, 0),
-      };
-      setPresales((prev) => prev.map((p) => (p.id === tempId ? saved : p)));
-      return saved;
     },
-    [ownerPromoterId]
+    [ownerPromoterId, startSaving, endSaving]
   );
 
-  const updatePresaleRaw = useCallback(async (id: string, patch: Partial<StaffEventPresale>) => {
-    setPresales((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
-    if (id.startsWith('temp-')) return;
-    const { error } = await supabase.from('staff_event_presales').update(patch).eq('id', id);
-    if (error) throw error;
-  }, []);
+  const updatePresaleRaw = useCallback(
+    async (id: string, patch: Partial<StaffEventPresale>) => {
+      setPresales((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+      if (id.startsWith('temp-')) return;
+      startSaving();
+      try {
+        await enqueueRowOp(`sp:${id}`, async () => {
+          const { error } = await supabase.from('staff_event_presales').update(patch).eq('id', id);
+          if (error) throw error;
+        });
+      } finally {
+        endSaving();
+      }
+    },
+    [startSaving, endSaving, enqueueRowOp]
+  );
 
-  const deletePresaleRaw = useCallback(async (id: string) => {
-    setPresales((prev) => prev.filter((p) => p.id !== id));
-    if (id.startsWith('temp-')) return;
-    const { error } = await supabase.from('staff_event_presales').delete().eq('id', id);
-    if (error) throw error;
-  }, []);
+  const deletePresaleRaw = useCallback(
+    async (id: string) => {
+      setPresales((prev) => prev.filter((p) => p.id !== id));
+      if (id.startsWith('temp-')) return;
+      startSaving();
+      try {
+        const { error } = await supabase.from('staff_event_presales').delete().eq('id', id);
+        if (error) throw error;
+      } finally {
+        endSaving();
+      }
+    },
+    [startSaving, endSaving]
+  );
 
   const insertTableRaw = useCallback(
     async (
@@ -581,74 +675,91 @@ export function useStaffData(
       // When recreating via Undo, let DB BEFORE INSERT trigger recreate linked event_table cleanly
       if (!payload.event_table_id) delete payload.event_table_id;
 
-      const { data, error } = await supabase
-        .from('staff_event_tables')
-        .insert(payload)
-        .select()
-        .single();
-      if (error) {
-        setTables((prev) => prev.filter((t) => t.id !== tempId));
-        throw error;
+      startSaving();
+      try {
+        const { data, error } = await supabase
+          .from('staff_event_tables')
+          .insert(payload)
+          .select()
+          .single();
+        if (error) {
+          setTables((prev) => prev.filter((t) => t.id !== tempId));
+          throw error;
+        }
+        const saved: StaffEventTable = {
+          id: String(data.id),
+          owner_promoter_id: ownerPromoterId,
+          event_id: String(data.event_id),
+          event_table_id: data.event_table_id ? String(data.event_table_id) : null,
+          staff_member_id: data.staff_member_id ? String(data.staff_member_id) : null,
+          promoter_name: String(data.promoter_name ?? ''),
+          table_name: String(data.table_name ?? ''),
+          payers_count: toNum(data.payers_count, 0),
+          price: toNum(data.price, 0),
+          surcharge_payers_count: toNum(data.surcharge_payers_count, 0),
+          surcharge_price: toNum(data.surcharge_price, 0),
+          extra: toNum(data.extra, 0),
+          extra_no_scarico: toNum(data.extra_no_scarico, 0),
+          scarico_status: normalizeScarico(data.scarico_status),
+          paid_cash: toNum(data.paid_cash, 0),
+          busta_override:
+            data.busta_override !== null && data.busta_override !== undefined
+              ? toNum(data.busta_override)
+              : null,
+          is_busta_paid: Boolean(data.is_busta_paid),
+          sort_order: toNum(data.sort_order, 0),
+        };
+        setTables((prev) => prev.map((t) => (t.id === tempId ? saved : t)));
+        notifyLinked();
+        return saved;
+      } finally {
+        endSaving();
       }
-      const saved: StaffEventTable = {
-        id: String(data.id),
-        owner_promoter_id: ownerPromoterId,
-        event_id: String(data.event_id),
-        event_table_id: data.event_table_id ? String(data.event_table_id) : null,
-        staff_member_id: data.staff_member_id ? String(data.staff_member_id) : null,
-        promoter_name: String(data.promoter_name ?? ''),
-        table_name: String(data.table_name ?? ''),
-        payers_count: toNum(data.payers_count, 0),
-        price: toNum(data.price, 0),
-        surcharge_payers_count: toNum(data.surcharge_payers_count, 0),
-        surcharge_price: toNum(data.surcharge_price, 0),
-        extra: toNum(data.extra, 0),
-        extra_no_scarico: toNum(data.extra_no_scarico, 0),
-        scarico_status: normalizeScarico(data.scarico_status),
-        paid_cash: toNum(data.paid_cash, 0),
-        busta_override:
-          data.busta_override !== null && data.busta_override !== undefined
-            ? toNum(data.busta_override)
-            : null,
-        is_busta_paid: Boolean(data.is_busta_paid),
-        sort_order: toNum(data.sort_order, 0),
-      };
-      setTables((prev) => prev.map((t) => (t.id === tempId ? saved : t)));
-      notifyLinked();
-      return saved;
     },
-    [ownerPromoterId, notifyLinked]
+    [ownerPromoterId, notifyLinked, startSaving, endSaving]
   );
 
   const updateTableRaw = useCallback(
     async (id: string, patch: Partial<StaffEventTable>) => {
       setTables((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
       if (id.startsWith('temp-')) return;
-      const { error } = await supabase.from('staff_event_tables').update(patch).eq('id', id);
-      if (error) throw error;
-      const touchesSyncedField =
-        patch.table_name !== undefined ||
-        patch.payers_count !== undefined ||
-        patch.price !== undefined ||
-        patch.surcharge_payers_count !== undefined ||
-        patch.surcharge_price !== undefined ||
-        patch.extra !== undefined ||
-        patch.extra_no_scarico !== undefined ||
-        patch.scarico_status !== undefined;
-      if (touchesSyncedField) notifyLinked();
+      startSaving();
+      try {
+        await enqueueRowOp(`st:${id}`, async () => {
+          const { error } = await supabase.from('staff_event_tables').update(patch).eq('id', id);
+          if (error) throw error;
+        });
+        const touchesSyncedField =
+          patch.table_name !== undefined ||
+          patch.payers_count !== undefined ||
+          patch.price !== undefined ||
+          patch.surcharge_payers_count !== undefined ||
+          patch.surcharge_price !== undefined ||
+          patch.extra !== undefined ||
+          patch.extra_no_scarico !== undefined ||
+          patch.scarico_status !== undefined;
+        if (touchesSyncedField) notifyLinked();
+      } finally {
+        endSaving();
+      }
     },
-    [notifyLinked]
+    [notifyLinked, startSaving, endSaving, enqueueRowOp]
   );
 
   const deleteTableRaw = useCallback(
     async (id: string) => {
       setTables((prev) => prev.filter((t) => t.id !== id));
       if (id.startsWith('temp-')) return;
-      const { error } = await supabase.from('staff_event_tables').delete().eq('id', id);
-      if (error) throw error;
-      notifyLinked();
+      startSaving();
+      try {
+        const { error } = await supabase.from('staff_event_tables').delete().eq('id', id);
+        if (error) throw error;
+        notifyLinked();
+      } finally {
+        endSaving();
+      }
     },
-    [notifyLinked]
+    [notifyLinked, startSaving, endSaving]
   );
 
   const insertCashTxRaw = useCallback(
@@ -680,39 +791,52 @@ export function useStaffData(
       };
       if (tx.id && !tx.id.startsWith('temp-')) payload.id = tx.id;
 
-      const { data, error } = await supabase
-        .from('staff_cash_transactions')
-        .insert(payload)
-        .select()
-        .single();
-      if (error) {
-        setCashTransactions((prev) => prev.filter((x) => x.id !== tempId));
-        throw error;
+      startSaving();
+      try {
+        const { data, error } = await supabase
+          .from('staff_cash_transactions')
+          .insert(payload)
+          .select()
+          .single();
+        if (error) {
+          setCashTransactions((prev) => prev.filter((x) => x.id !== tempId));
+          throw error;
+        }
+        const saved: StaffCashTransaction = {
+          id: String(data.id),
+          owner_promoter_id: ownerPromoterId,
+          event_id: String(data.event_id),
+          staff_member_id: data.staff_member_id ? String(data.staff_member_id) : null,
+          promoter_name: String(data.promoter_name ?? ''),
+          amount: toNum(data.amount, 0),
+          payment_method: normalizeMethod(data.payment_method),
+          note: String(data.note ?? ''),
+          allocations: normalizeAllocations(data.allocations),
+          recorded_at: String(data.recorded_at ?? recordedAt),
+        };
+        setCashTransactions((prev) => prev.map((x) => (x.id === tempId ? saved : x)));
+        return saved;
+      } finally {
+        endSaving();
       }
-      const saved: StaffCashTransaction = {
-        id: String(data.id),
-        owner_promoter_id: ownerPromoterId,
-        event_id: String(data.event_id),
-        staff_member_id: data.staff_member_id ? String(data.staff_member_id) : null,
-        promoter_name: String(data.promoter_name ?? ''),
-        amount: toNum(data.amount, 0),
-        payment_method: normalizeMethod(data.payment_method),
-        note: String(data.note ?? ''),
-        allocations: normalizeAllocations(data.allocations),
-        recorded_at: String(data.recorded_at ?? recordedAt),
-      };
-      setCashTransactions((prev) => prev.map((x) => (x.id === tempId ? saved : x)));
-      return saved;
     },
-    [ownerPromoterId]
+    [ownerPromoterId, startSaving, endSaving]
   );
 
-  const deleteCashTxRaw = useCallback(async (id: string) => {
-    setCashTransactions((prev) => prev.filter((x) => x.id !== id));
-    if (id.startsWith('temp-')) return;
-    const { error } = await supabase.from('staff_cash_transactions').delete().eq('id', id);
-    if (error) throw error;
-  }, []);
+  const deleteCashTxRaw = useCallback(
+    async (id: string) => {
+      setCashTransactions((prev) => prev.filter((x) => x.id !== id));
+      if (id.startsWith('temp-')) return;
+      startSaving();
+      try {
+        const { error } = await supabase.from('staff_cash_transactions').delete().eq('id', id);
+        if (error) throw error;
+      } finally {
+        endSaving();
+      }
+    },
+    [startSaving, endSaving]
+  );
 
   const applyAllocationsDelta = useCallback(
     async (allocations: StaffCashAllocation[], sign: 1 | -1) => {
@@ -756,7 +880,7 @@ export function useStaffData(
       if (error) {
         console.error('assignSubPrToEventTable failed:', error);
       } else {
-        await fetchStaff(true);
+        await fetchStaff(true, true);
       }
     },
     [ownerPromoterId, updateTableRaw, fetchStaff]
@@ -828,7 +952,7 @@ export function useStaffData(
         });
       } catch {
         toast.error('Errore salvataggio prevendite staff');
-        fetchStaff(true);
+        fetchStaff(true, true);
       }
     },
     [updatePresaleRaw, pushUndo, fetchStaff]
@@ -849,7 +973,7 @@ export function useStaffData(
         });
       } catch {
         toast.error('Errore eliminazione riga');
-        fetchStaff(true);
+        fetchStaff(true, true);
       }
     },
     [deletePresaleRaw, insertPresaleRaw, pushUndo, fetchStaff]
@@ -929,7 +1053,7 @@ export function useStaffData(
         });
       } catch {
         toast.error('Errore salvataggio tavolo staff');
-        fetchStaff(true);
+        fetchStaff(true, true);
       }
     },
     [updateTableRaw, pushUndo, fetchStaff]
@@ -956,7 +1080,7 @@ export function useStaffData(
         });
       } catch {
         toast.error('Errore eliminazione tavolo staff');
-        fetchStaff(true);
+        fetchStaff(true, true);
       }
     },
     [deleteTableRaw, insertTableRaw, pushUndo, fetchStaff]
@@ -1097,7 +1221,7 @@ export function useStaffData(
       } catch (err) {
         console.error(err);
         toast.error('Errore registrazione incasso');
-        fetchStaff(true);
+        fetchStaff(true, true);
         return null;
       }
     },
@@ -1136,7 +1260,7 @@ export function useStaffData(
       } catch (err) {
         console.error(err);
         toast.error('Errore rimozione movimento');
-        fetchStaff(true);
+        fetchStaff(true, true);
       }
     },
     [applyAllocationsDelta, deleteCashTxRaw, insertCashTxRaw, pushUndo, fetchStaff]
@@ -1225,19 +1349,25 @@ export function useStaffData(
         ]);
       };
 
-      await applyForward();
-      pushUndo({
-        label: paid ? `Busta pagata ${rollup.displayName}` : `Busta riaperta ${rollup.displayName}`,
-        undo: applyBackward,
-        redo: applyForward,
-      });
-      toast.success(
-        paid
-          ? `Busta di ${rollup.displayName} segnata come pagata`
-          : `Busta di ${rollup.displayName} segnata da pagare`
-      );
+      try {
+        await applyForward();
+        pushUndo({
+          label: paid ? `Busta pagata ${rollup.displayName}` : `Busta riaperta ${rollup.displayName}`,
+          undo: applyBackward,
+          redo: applyForward,
+        });
+        toast.success(
+          paid
+            ? `Busta di ${rollup.displayName} segnata come pagata`
+            : `Busta di ${rollup.displayName} segnata da pagare`
+        );
+      } catch (err) {
+        console.error(err);
+        toast.error('Errore aggiornamento stato busta');
+        fetchStaff(true, true);
+      }
     },
-    [updatePresaleRaw, updateTableRaw, pushUndo]
+    [updatePresaleRaw, updateTableRaw, pushUndo, fetchStaff]
   );
 
   // Bulk import pasted TicketSMS report (matches existing sub-PRs or creates new ones cleanly!)
@@ -1318,7 +1448,7 @@ export function useStaffData(
         }
       }
 
-      await fetchStaff(true);
+      await fetchStaff(true, true);
       toast.success(`Importati ${rows.length} promoter dal report TicketSMS`);
     },
     [ownerPromoterId, plans, fetchStaff]

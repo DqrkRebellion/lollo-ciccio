@@ -623,9 +623,13 @@ export function EventDetail({
             <span className="text-[13px] font-medium">Busta saldata</span>
             <AppleSwitch
               checked={event.is_busta_paid}
-              onChange={(checked) => {
-                onUpdateEvent(event.id, { is_busta_paid: checked });
-                toast.success(checked ? 'Busta segnata come saldata' : 'Busta segnata da incassare');
+              onChange={async (checked) => {
+                try {
+                  await onUpdateEvent(event.id, { is_busta_paid: checked });
+                  toast.success(checked ? 'Busta segnata come saldata' : 'Busta segnata da incassare');
+                } catch {
+                  // Error toast & rollback handled in useAppData
+                }
               }}
               label="Busta saldata"
             />

@@ -237,6 +237,25 @@ export function StaffWorkspace({
   const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>('OPEN');
   const [ledgerSearch, setLedgerSearch] = useState('');
   const [expandedPrKeys, setExpandedPrKeys] = useState<Record<string, boolean>>({});
+  const [busyLedgerKeys, setBusyLedgerKeys] = useState<Set<string>>(() => new Set());
+
+  const runLedgerAction = async (key: string, fn: () => Promise<void>) => {
+    if (busyLedgerKeys.has(key)) return;
+    setBusyLedgerKeys((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+    try {
+      await fn();
+    } finally {
+      setBusyLedgerKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
 
   // Team & Plans state
   const [groupNameDraft, setGroupNameDraft] = useState(staffData.group.name);
@@ -1223,14 +1242,17 @@ export function StaffWorkspace({
                             {pr.mancantiTotal > 0.01 && (
                               <button
                                 type="button"
-                                onClick={async () => {
-                                  for (const entry of pr.eventEntries) {
-                                    if (entry.rollup.mancantiTotal > 0.01) {
-                                      await staffData.settleMemberCash(entry.rollup);
+                                disabled={busyLedgerKeys.has(`cash:${pr.key}`)}
+                                onClick={() =>
+                                  runLedgerAction(`cash:${pr.key}`, async () => {
+                                    for (const entry of pr.eventEntries) {
+                                      if (entry.rollup.mancantiTotal > 0.01) {
+                                        await staffData.settleMemberCash(entry.rollup);
+                                      }
                                     }
-                                  }
-                                }}
-                                className="inline-flex items-center gap-1 rounded-[9px] px-2.5 py-1.5 text-[12px] font-semibold apple-press cursor-pointer"
+                                  })
+                                }
+                                className="inline-flex items-center gap-1 rounded-[9px] px-2.5 py-1.5 text-[12px] font-semibold apple-press cursor-pointer disabled:opacity-50"
                                 style={{
                                   backgroundColor: 'var(--status-green-bg)',
                                   color: 'var(--status-green)',
@@ -1243,14 +1265,17 @@ export function StaffWorkspace({
                             {pr.bustaUnpaidPast > 0.01 && (
                               <button
                                 type="button"
-                                onClick={async () => {
-                                  for (const entry of pr.eventEntries) {
-                                    if (!entry.isActive && entry.rollup.bustaUnpaidAmount > 0.01) {
-                                      await staffData.toggleMemberBustaPaid(entry.rollup, true);
+                                disabled={busyLedgerKeys.has(`busta:${pr.key}`)}
+                                onClick={() =>
+                                  runLedgerAction(`busta:${pr.key}`, async () => {
+                                    for (const entry of pr.eventEntries) {
+                                      if (!entry.isActive && entry.rollup.bustaUnpaidAmount > 0.01) {
+                                        await staffData.toggleMemberBustaPaid(entry.rollup, true);
+                                      }
                                     }
-                                  }
-                                }}
-                                className="inline-flex items-center gap-1 rounded-[9px] px-2.5 py-1.5 text-[12px] font-semibold text-white apple-press cursor-pointer"
+                                  })
+                                }
+                                className="inline-flex items-center gap-1 rounded-[9px] px-2.5 py-1.5 text-[12px] font-semibold text-white apple-press cursor-pointer disabled:opacity-50"
                                 style={{ backgroundColor: 'var(--accent)' }}
                               >
                                 {pr.bustaUnpaidActive > 0.01 ? 'Paga definitive' : 'Paga buste'}

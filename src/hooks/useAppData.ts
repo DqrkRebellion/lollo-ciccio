@@ -172,22 +172,59 @@ export function useAppData(isAuthenticated: boolean) {
 
   const reloadTimerRef = useRef<number | null>(null);
   const savingCounterRef = useRef(0);
+  const mutationEpochRef = useRef(0);
+  const lastLocalSaveEndAtRef = useRef(0);
+  const pendingRemoteReloadRef = useRef(false);
+  const fetchSeqRef = useRef(0);
+  const eventQueueRef = useRef(new Map<string, Promise<void>>());
+  const scheduleReloadRef = useRef<() => void>(() => {});
 
   const startSaving = useCallback(() => {
     savingCounterRef.current += 1;
+    mutationEpochRef.current += 1;
+    // Cancel any queued Realtime reload immediately so it cannot race with this mutation
+    if (reloadTimerRef.current !== null) {
+      window.clearTimeout(reloadTimerRef.current);
+      reloadTimerRef.current = null;
+    }
     setSyncState('saving');
   }, []);
 
   const endSaving = useCallback((failed = false) => {
     savingCounterRef.current = Math.max(0, savingCounterRef.current - 1);
+    mutationEpochRef.current += 1;
+    lastLocalSaveEndAtRef.current = Date.now();
     if (failed) {
       setSyncState('error');
     } else if (savingCounterRef.current === 0) {
       setSyncState('live');
+      if (pendingRemoteReloadRef.current) {
+        pendingRemoteReloadRef.current = false;
+        scheduleReloadRef.current();
+      }
     }
   }, []);
 
-  const fetchAll = useCallback(async (silent = false) => {
+  const enqueueEventOp = useCallback(
+    (eventId: string, op: () => Promise<void>): Promise<void> => {
+      const prev = eventQueueRef.current.get(eventId) ?? Promise.resolve();
+      const next = prev.catch(() => undefined).then(op);
+      eventQueueRef.current.set(eventId, next);
+      next.finally(() => {
+        if (eventQueueRef.current.get(eventId) === next) {
+          eventQueueRef.current.delete(eventId);
+        }
+      });
+      return next;
+    },
+    []
+  );
+
+  const fetchAll = useCallback(async (silent = false, force = false) => {
+    if (silent && !force && savingCounterRef.current > 0) return;
+
+    const mySeq = ++fetchSeqRef.current;
+    const startEpoch = mutationEpochRef.current;
     if (!silent) setLoading(true);
     try {
       const [settingsRes, promotersRes, venuesRes, eventsRes, presalesRes, tablesRes, reconsRes] =
@@ -214,6 +251,17 @@ export function useAppData(isAuthenticated: boolean) {
         tablesRes.error ||
         reconsRes.error;
       if (firstErr) throw firstErr;
+
+      // Discard stale fetch responses so optimistic local edits (e.g. rapid Busta Paid clicks)
+      // can NEVER be overwritten and reverted by an earlier in-flight reload.
+      if (mySeq !== fetchSeqRef.current) return;
+      if (
+        silent &&
+        !force &&
+        (savingCounterRef.current > 0 || mutationEpochRef.current !== startEpoch)
+      ) {
+        return;
+      }
 
       setSettings(normalizeSettings(settingsRes.data as Record<string, unknown> | null));
       setPromoters((promotersRes.data || []) as Promoter[]);
@@ -309,12 +357,25 @@ export function useAppData(isAuthenticated: boolean) {
     fetchAll(false);
 
     const scheduleReload = () => {
-      if (savingCounterRef.current > 0) return;
-      if (reloadTimerRef.current) window.clearTimeout(reloadTimerRef.current);
+      if (savingCounterRef.current > 0) {
+        pendingRemoteReloadRef.current = true;
+        return;
+      }
+      if (reloadTimerRef.current !== null) {
+        window.clearTimeout(reloadTimerRef.current);
+      }
+      const msSinceLocalWrite = Date.now() - lastLocalSaveEndAtRef.current;
+      const delay = msSinceLocalWrite < 1600 ? 1400 : 350;
       reloadTimerRef.current = window.setTimeout(() => {
+        reloadTimerRef.current = null;
+        if (savingCounterRef.current > 0) {
+          pendingRemoteReloadRef.current = true;
+          return;
+        }
         fetchAll(true);
-      }, 350);
+      }, delay);
     };
+    scheduleReloadRef.current = scheduleReload;
 
     const channel = supabase
       .channel('lc-realtime-sync')
@@ -334,7 +395,11 @@ export function useAppData(isAuthenticated: boolean) {
       });
 
     return () => {
-      if (reloadTimerRef.current) window.clearTimeout(reloadTimerRef.current);
+      scheduleReloadRef.current = () => {};
+      if (reloadTimerRef.current !== null) {
+        window.clearTimeout(reloadTimerRef.current);
+        reloadTimerRef.current = null;
+      }
       supabase.removeChannel(channel);
     };
   }, [isAuthenticated, fetchAll]);
@@ -345,17 +410,21 @@ export function useAppData(isAuthenticated: boolean) {
     async (eventId: string, patch: Partial<EventRecord>) => {
       setEvents((prev) => prev.map((ev) => (ev.id === eventId ? { ...ev, ...patch } : ev)));
       startSaving();
-      const { error } = await supabase.from('events').update(patch).eq('id', eventId);
-      if (error) {
+      try {
+        await enqueueEventOp(eventId, async () => {
+          const { error } = await supabase.from('events').update(patch).eq('id', eventId);
+          if (error) throw error;
+        });
+        endSaving(false);
+      } catch (error) {
         console.error(error);
         endSaving(true);
         toast.error('Errore nel salvataggio serata');
-        fetchAll(true);
+        fetchAll(true, true);
         throw error;
       }
-      endSaving(false);
     },
-    [startSaving, endSaving, fetchAll]
+    [startSaving, endSaving, enqueueEventOp, fetchAll]
   );
 
   const restoreDeletedEventRaw = useCallback(
@@ -426,7 +495,7 @@ export function useAppData(isAuthenticated: boolean) {
             }))
           );
         }
-        await fetchAll(true);
+        await fetchAll(true, true);
       } finally {
         endSaving(false);
       }
@@ -441,7 +510,7 @@ export function useAppData(isAuthenticated: boolean) {
       const { error } = await supabase.from('events').delete().eq('id', eventId);
       if (error) {
         endSaving(true);
-        await fetchAll(true);
+        await fetchAll(true, true);
         throw error;
       }
       endSaving(false);
@@ -649,7 +718,7 @@ export function useAppData(isAuthenticated: boolean) {
       const { error } = await supabase.from('event_tables').delete().eq('id', tableId);
       if (error) {
         endSaving(true);
-        await fetchAll(true);
+        await fetchAll(true, true);
         throw error;
       }
       endSaving(false);
