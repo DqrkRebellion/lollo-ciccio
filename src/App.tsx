@@ -283,6 +283,8 @@ export default function App() {
                   onUndo={data.undo}
                   onRedo={data.redo}
                   onOpenNewEvent={() => setNewEventOpen(true)}
+                  ticketSmsSyncing={ticketSmsData.syncing}
+                  onTriggerTicketSmsSync={ticketSmsEnabled ? ticketSmsData.triggerSync : undefined}
                   onUpdateEvent={data.updateEvent}
                   onDuplicateEvent={async (ev) => {
                     const created = await data.duplicateEvent(ev);
@@ -343,6 +345,8 @@ export default function App() {
                     onUndo={data.undo}
                     onRedo={data.redo}
                     onOpenNewEvent={() => setNewEventOpen(true)}
+                    ticketSmsSyncing={ticketSmsData.syncing}
+                    onTriggerTicketSmsSync={ticketSmsEnabled ? ticketSmsData.triggerSync : undefined}
                     onOpenCashCollection={(eventId) => {
                       setCashEventId(eventId);
                       setActiveTab('cash');

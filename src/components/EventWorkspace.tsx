@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { CalendarDays, CheckCircle2, Plus, Search, X } from 'lucide-react';
+import { CalendarDays, CheckCircle2, Plus, RefreshCw, Search, X } from 'lucide-react';
 import { EventDetail } from './EventDetail';
 import { splitActiveAndPastEvents } from '../lib/events';
 import { formatDateDayMonth, formatEur, formatInt } from '../lib/format';
@@ -37,6 +37,8 @@ export function EventWorkspace({
   onUndo,
   onRedo,
   onOpenNewEvent,
+  ticketSmsSyncing = false,
+  onTriggerTicketSmsSync,
   onUpdateEvent,
   onDuplicateEvent,
   onDeleteEvent,
@@ -70,6 +72,8 @@ export function EventWorkspace({
   onUndo: () => Promise<void>;
   onRedo: () => Promise<void>;
   onOpenNewEvent: () => void;
+  ticketSmsSyncing?: boolean;
+  onTriggerTicketSmsSync?: () => Promise<void>;
   onUpdateEvent: (id: string, patch: Partial<EventRecord>) => Promise<void>;
   onDuplicateEvent: (ev: FullEvent) => Promise<void>;
   onDeleteEvent: (id: string) => Promise<void>;
@@ -183,6 +187,8 @@ export function EventWorkspace({
         onUndo={onUndo}
         onRedo={onRedo}
         onBack={() => onSelectEvent(null)}
+        ticketSmsSyncing={ticketSmsSyncing}
+        onTriggerTicketSmsSync={onTriggerTicketSmsSync}
         onUpdateEvent={onUpdateEvent}
         onDuplicateEvent={onDuplicateEvent}
         onDeleteEvent={onDeleteEvent}
@@ -284,18 +290,39 @@ export function EventWorkspace({
   return (
     <div className="mx-auto w-full max-w-[1000px] px-4 sm:px-6 lg:px-8 pt-5 pb-28 lg:pb-12 space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2.5">
         <h1 className="text-[28px] sm:text-[34px] font-bold tracking-tight">Serate</h1>
 
-        <button
-          type="button"
-          onClick={onOpenNewEvent}
-          className="inline-flex items-center gap-1.5 rounded-[11px] px-4 py-2 text-[14px] font-semibold text-white apple-press cursor-pointer"
-          style={{ backgroundColor: 'var(--accent)' }}
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Nuova serata
-        </button>
+        <div className="flex items-center gap-2">
+          {onTriggerTicketSmsSync && (
+            <button
+              type="button"
+              disabled={ticketSmsSyncing}
+              onClick={() => onTriggerTicketSmsSync()}
+              title="Aggiorna manualmente i dati da TicketSMS"
+              className="inline-flex items-center gap-1.5 rounded-[11px] px-3 sm:px-3.5 py-2 text-[13px] sm:text-[14px] font-semibold apple-surface apple-press cursor-pointer disabled:opacity-60"
+              style={{ color: 'var(--accent)' }}
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${ticketSmsSyncing ? 'animate-spin' : ''}`}
+                aria-hidden="true"
+              />
+              <span className="hidden sm:inline">
+                {ticketSmsSyncing ? 'Aggiornamento…' : 'Aggiorna TicketSMS'}
+              </span>
+              <span className="sm:hidden">{ticketSmsSyncing ? 'Sync…' : 'TicketSMS'}</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onOpenNewEvent}
+            className="inline-flex items-center gap-1.5 rounded-[11px] px-3.5 sm:px-4 py-2 text-[13px] sm:text-[14px] font-semibold text-white apple-press cursor-pointer"
+            style={{ backgroundColor: 'var(--accent)' }}
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Nuova serata
+          </button>
+        </div>
       </div>
 
       {/* Search & Filters */}

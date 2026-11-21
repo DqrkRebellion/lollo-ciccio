@@ -10,6 +10,7 @@ import {
   Layers,
   Pencil,
   Plus,
+  RefreshCw,
   Search,
   Sliders,
   Trash2,
@@ -197,6 +198,8 @@ export function StaffWorkspace({
   onUndo,
   onRedo,
   onOpenNewEvent,
+  ticketSmsSyncing = false,
+  onTriggerTicketSmsSync,
   onOpenCashCollection,
   onSyncPresalesToMain,
 }: {
@@ -215,6 +218,8 @@ export function StaffWorkspace({
   onUndo: () => Promise<void>;
   onRedo: () => Promise<void>;
   onOpenNewEvent: () => void;
+  ticketSmsSyncing?: boolean;
+  onTriggerTicketSmsSync?: () => Promise<void>;
   onOpenCashCollection: (eventId: string) => void;
   onSyncPresalesToMain: (
     eventId: string,
@@ -809,6 +814,8 @@ export function StaffWorkspace({
               onUndo={onUndo}
               onRedo={onRedo}
               onBack={() => onSelectEvent(null)}
+              ticketSmsSyncing={ticketSmsSyncing}
+              onTriggerTicketSmsSync={onTriggerTicketSmsSync}
               onOpenCashCollection={() => onOpenCashCollection(activeEvent.id)}
               onSyncPresalesToMain={(qty, rev, oto) =>
                 onSyncPresalesToMain(activeEvent.id, qty, rev, oto)
@@ -895,6 +902,22 @@ export function StaffWorkspace({
                     </button>
                   );
                 })}
+                {onTriggerTicketSmsSync && (
+                  <button
+                    type="button"
+                    disabled={ticketSmsSyncing}
+                    onClick={() => onTriggerTicketSmsSync()}
+                    title="Aggiorna manualmente i dati da TicketSMS"
+                    className="inline-flex items-center gap-1.5 rounded-[9px] px-3 py-1.5 text-[12px] font-semibold apple-surface apple-press cursor-pointer disabled:opacity-60"
+                    style={{ color: 'var(--accent)' }}
+                  >
+                    <RefreshCw
+                      className={`h-3.5 w-3.5 ${ticketSmsSyncing ? 'animate-spin' : ''}`}
+                      aria-hidden="true"
+                    />
+                    <span>{ticketSmsSyncing ? 'Sync…' : 'Aggiorna TicketSMS'}</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={onOpenNewEvent}

@@ -10,6 +10,7 @@ import {
   Layers,
   Plus,
   Redo2,
+  RefreshCw,
   Share2,
   Trash2,
   Undo2,
@@ -91,6 +92,8 @@ export function StaffEventDetail({
   onUndo,
   onRedo,
   onBack,
+  ticketSmsSyncing = false,
+  onTriggerTicketSmsSync,
   onOpenCashCollection,
   onSyncPresalesToMain,
   onAddPresale,
@@ -121,6 +124,8 @@ export function StaffEventDetail({
   onUndo: () => Promise<void>;
   onRedo: () => Promise<void>;
   onBack?: () => void;
+  ticketSmsSyncing?: boolean;
+  onTriggerTicketSmsSync?: () => Promise<void>;
   onOpenCashCollection?: () => void;
   onSyncPresalesToMain: (quantity: number, revenue: number, oneToOne: number) => Promise<void>;
   onAddPresale: (
@@ -398,6 +403,26 @@ export function StaffEventDetail({
               <Redo2 className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           </div>
+
+          {onTriggerTicketSmsSync && (
+            <button
+              type="button"
+              disabled={ticketSmsSyncing}
+              onClick={() => onTriggerTicketSmsSync()}
+              title="Aggiorna manualmente i dati da TicketSMS"
+              className="inline-flex items-center gap-1.5 rounded-[10px] px-2.5 sm:px-3 py-1.5 text-[12px] sm:text-[13px] font-semibold apple-surface apple-press cursor-pointer disabled:opacity-60"
+              style={{ color: 'var(--accent)' }}
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${ticketSmsSyncing ? 'animate-spin' : ''}`}
+                aria-hidden="true"
+              />
+              <span className="hidden sm:inline">
+                {ticketSmsSyncing ? 'Sync…' : 'Aggiorna TicketSMS'}
+              </span>
+              <span className="sm:hidden">{ticketSmsSyncing ? 'Sync…' : 'TicketSMS'}</span>
+            </button>
+          )}
 
           {onOpenCashCollection && (
             <button

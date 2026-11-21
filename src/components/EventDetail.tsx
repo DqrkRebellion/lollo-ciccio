@@ -10,6 +10,7 @@ import {
   Info,
   Plus,
   Redo2,
+  RefreshCw,
   Share2,
   SlidersHorizontal,
   Trash2,
@@ -109,6 +110,8 @@ export function EventDetail({
   onUndo,
   onRedo,
   onBack,
+  ticketSmsSyncing = false,
+  onTriggerTicketSmsSync,
   onUpdateEvent,
   onDuplicateEvent,
   onDeleteEvent,
@@ -140,6 +143,8 @@ export function EventDetail({
   onUndo: () => Promise<void>;
   onRedo: () => Promise<void>;
   onBack?: () => void;
+  ticketSmsSyncing?: boolean;
+  onTriggerTicketSmsSync?: () => Promise<void>;
   onUpdateEvent: (id: string, patch: Partial<EventRecord>) => Promise<void>;
   onDuplicateEvent: (ev: FullEvent) => Promise<void>;
   onDeleteEvent: (id: string) => Promise<void>;
@@ -419,7 +424,7 @@ export function EventDetail({
         { promoterId: primaryPrId, patch: { [field]: newPrimaryVal } },
         { promoterId: secondaryPrId, patch: { [field]: secondaryNext } },
       ],
-      `Prevendite ${getPromoter(primaryPrId).display_name} (Ciccio auto)`
+      `Prevendite ${getPromoter(primaryPrId).display_name}`
     );
   };
 
@@ -528,6 +533,26 @@ export function EventDetail({
               <Redo2 className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           </div>
+
+          {onTriggerTicketSmsSync && (
+            <button
+              type="button"
+              disabled={ticketSmsSyncing}
+              onClick={() => onTriggerTicketSmsSync()}
+              className="inline-flex items-center gap-1.5 rounded-[10px] px-2.5 sm:px-3 py-1.5 text-[13px] font-semibold apple-surface apple-press cursor-pointer disabled:opacity-60"
+              style={{ color: 'var(--accent)' }}
+              title="Aggiorna manualmente i dati da TicketSMS"
+              aria-label="Aggiorna dati TicketSMS"
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${ticketSmsSyncing ? 'animate-spin' : ''}`}
+                aria-hidden="true"
+              />
+              <span className="hidden sm:inline">
+                {ticketSmsSyncing ? 'Sync…' : 'Aggiorna TicketSMS'}
+              </span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -1167,7 +1192,7 @@ export function EventDetail({
                 borderLeft: '3px solid var(--accent)',
               }}
             >
-              <div className="text-[14px] font-bold">Totale serata</div>
+              <div className="text-[14px] font-bold">Totale</div>
               <div className="grid grid-cols-3 gap-2">
                 <div className="min-w-0">
                   <span className="block text-[11px] mb-1 truncate" style={{ color: 'var(--ink-secondary)' }}>
@@ -1337,7 +1362,7 @@ export function EventDetail({
             <tbody className="divide-y divide-[var(--separator)] text-[14px]">
               {isTotalMinusMode && (
                 <tr style={{ backgroundColor: 'var(--bg-hover)' }}>
-                  <td className="py-2.5 pl-4 pr-2 font-semibold">Totale serata</td>
+                  <td className="py-2.5 pl-4 pr-2 font-semibold">Totale</td>
                   <td className="py-2.5 px-2">
                     <NumericCellInput
                       value={summary.pxPresales}
