@@ -222,7 +222,13 @@ export function StaffEventDetail({
     (staffSummary.pxPresales !== (ownerPrSummary?.pxPresales ?? 0) ||
       Math.abs(staffSummary.presalesRevenue - (ownerPrSummary?.revenuePresales ?? 0)) > 0.01);
 
-  const importPreview = useMemo(() => parseStaffTicketSmsReport(importText), [importText]);
+  const importPreview = useMemo(
+    () =>
+      parseStaffTicketSmsReport(importText, {
+        excludePromoters: ownerPromoterId === 'ciccio' ? ['Lorenzo Biondi'] : undefined,
+      }),
+    [importText, ownerPromoterId]
+  );
 
   const handleApplyImport = async () => {
     if (importPreview.length === 0) return;
@@ -422,9 +428,7 @@ export function StaffEventDetail({
             style={{ color: 'var(--accent)' }}
           >
             <FileSpreadsheet className="h-3.5 w-3.5" aria-hidden="true" />
-            <span className="hidden sm:inline">
-              {ownerPromoterId === 'lollo' ? 'Importa TicketSMS' : 'Importa CSV'}
-            </span>
+            <span className="hidden sm:inline">Importa TicketSMS</span>
             <span className="sm:hidden">Importa</span>
           </button>
 
@@ -632,9 +636,7 @@ export function StaffEventDetail({
                 Nessun dato {staffGroup.name} registrato in questa serata
               </p>
               <p className="text-[13px] max-w-md mx-auto" style={{ color: 'var(--ink-secondary)' }}>
-                {ownerPromoterId === 'lollo'
-                  ? 'Incolla il report TicketSMS oppure aggiungi manualmente i tavoli e le prevendite dei tuoi sotto-PR.'
-                  : 'Incolla un report CSV/Excel oppure aggiungi manualmente i tavoli e le prevendite dei tuoi sotto-PR.'}
+                Incolla il report TicketSMS oppure aggiungi manualmente i tavoli e le prevendite dei tuoi sotto-PR.
               </p>
               <div className="flex flex-wrap justify-center gap-2 pt-1">
                 <button
@@ -644,7 +646,7 @@ export function StaffEventDetail({
                   style={{ backgroundColor: 'var(--accent)' }}
                 >
                   <FileSpreadsheet className="h-4 w-4" aria-hidden="true" />
-                  {ownerPromoterId === 'lollo' ? 'Importa TicketSMS' : 'Importa CSV'}
+                  Importa TicketSMS
                 </button>
                 <button
                   type="button"
@@ -991,9 +993,7 @@ export function StaffEventDetail({
                       className="py-10 text-center"
                       style={{ color: 'var(--ink-secondary)' }}
                     >
-                      {ownerPromoterId === 'lollo'
-                        ? 'Nessuna prevendita registrata. Incolla il report TicketSMS o aggiungi un PR.'
-                        : 'Nessuna prevendita registrata. Incolla un report CSV/Excel o aggiungi un PR.'}
+                      Nessuna prevendita registrata. Incolla il report TicketSMS o aggiungi un PR.
                     </td>
                   </tr>
                 ) : (
@@ -1622,15 +1622,11 @@ export function StaffEventDetail({
       <AppleModal
         open={showImportModal}
         onClose={() => setShowImportModal(false)}
-        title={
-          ownerPromoterId === 'lollo'
-            ? `Importa report TicketSMS · ${staffGroup.name}`
-            : `Importa report prevendite · ${staffGroup.name}`
-        }
+        title={`Importa report TicketSMS · ${staffGroup.name}`}
         subtitle={
-          ownerPromoterId === 'lollo'
-            ? 'Incolla le righe dal report TicketSMS (colonne A:L del foglio Reverse): raggruppa automaticamente ogni sotto-PR, calcola scarichi e buste.'
-            : 'Incolla le righe dal tuo foglio Excel o Google Sheets: raggruppa automaticamente ogni sotto-PR, calcola scarichi e buste.'
+          ownerPromoterId === 'ciccio'
+            ? 'Incolla le righe dal report TicketSMS: raggruppa automaticamente ogni sotto-PR (escludendo Lorenzo Biondi), calcola scarichi e buste.'
+            : 'Incolla le righe dal report TicketSMS: raggruppa automaticamente ogni sotto-PR, calcola scarichi e buste.'
         }
         maxWidth="max-w-[580px]"
       >
@@ -1639,11 +1635,7 @@ export function StaffEventDetail({
             rows={7}
             value={importText}
             onChange={(e) => setImportText(e.target.value)}
-            placeholder={
-              ownerPromoterId === 'lollo'
-                ? 'Incolla qui direttamente da TicketSMS / Excel / Google Sheets…'
-                : 'Incolla qui direttamente da Excel / Google Sheets…'
-            }
+            placeholder="Incolla qui direttamente da TicketSMS / Excel / Google Sheets…"
             className="apple-input w-full rounded-[12px] p-3 text-[16px] md:text-[13px] font-mono"
           />
 

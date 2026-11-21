@@ -13,10 +13,9 @@ function normalizeStatus(v: unknown): TicketSmsSyncState {
 }
 
 /**
- * Lightweight Lollo-only listener for the daily 15:00 TicketSMS sync status.
- * Does not fetch per-PR report rows or expose manual sync triggers in Serate;
- * simply keeps sync status visible in Settings and refreshes app data if a
- * scheduled 15:00 sync completes while the app is open.
+ * Lightweight listener for the daily 15:00 TicketSMS sync status (Lollo & Ciccio).
+ * Keeps sync status visible in Settings and refreshes app & staff data automatically
+ * whenever a scheduled or local TicketSMS sync completes while the app is open.
  */
 export function useTicketSmsData(
   enabled: boolean,

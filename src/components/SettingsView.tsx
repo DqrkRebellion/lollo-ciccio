@@ -1077,7 +1077,7 @@ export function SettingsView({
           {section === 'data' && (
             <div className="apple-surface rounded-[16px] overflow-hidden">
               <div className="apple-list">
-                {userPromoterId === 'lollo' && (
+                {(userPromoterId === 'lollo' || userPromoterId === 'ciccio') && (
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 px-4 sm:px-5 py-4">
                     <div className="min-w-0">
                       <div className="text-[14px] font-medium">Sincronizzazione TicketSMS</div>
@@ -1097,9 +1097,10 @@ export function SettingsView({
                                   : 'var(--status-red)',
                             }}
                           >
-                            {ticketSmsSyncStatus.status === 'session_expired'
-                              ? 'Sessione scaduta: aggiorna il cookie TicketSMS'
-                              : ticketSmsSyncStatus.message || 'Errore ultimo sync'}
+                            {ticketSmsSyncStatus.message ||
+                              (ticketSmsSyncStatus.status === 'session_expired'
+                                ? 'Sessione scaduta: aggiorna il cookie TicketSMS'
+                                : 'Errore ultimo sync')}
                           </div>
                         )}
                     </div>

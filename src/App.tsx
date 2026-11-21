@@ -102,7 +102,7 @@ export default function App() {
 
   const ownerPromoterId: 'lollo' | 'ciccio' =
     currentAccount.promoterId === 'ciccio' ? 'ciccio' : 'lollo';
-  const ticketSmsEnabled = ownerPromoterId === 'lollo';
+  const ticketSmsEnabled = ownerPromoterId === 'lollo' || ownerPromoterId === 'ciccio';
 
   const isUnlocked = Boolean(session) && visitUnlocked;
   const data = useAppData(isUnlocked);

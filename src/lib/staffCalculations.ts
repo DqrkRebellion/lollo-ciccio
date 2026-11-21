@@ -395,18 +395,47 @@ export function computeStaffEventSummary(
   };
 }
 
+function normalizePromoterKey(name: string): string {
+  return name
+    .replace(/\s*\(\s*\+\s*\d+\s*pr\s*\)\s*$/i, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function isExcludedPromoterName(rawName: string, excludedNormalized: string[]): boolean {
+  if (excludedNormalized.length === 0) return false;
+  const cleaned = normalizePromoterKey(rawName);
+  if (!cleaned) return false;
+  const tokens = cleaned.split(' ');
+  const tokenSet = new Set(tokens);
+  for (const ex of excludedNormalized) {
+    if (cleaned === ex) return true;
+    const exTokens = ex.split(' ');
+    if (tokens.length >= 2 && exTokens.length === tokens.length) {
+      if (exTokens.every((t) => tokenSet.has(t))) return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Parses pasted TicketSMS / Excel table directly for Staff sub-PRs (A1:L format from FOGLIO REVERSE).
  * Aggregates Online + One-to-One + Cassa quantities, Incasso (€), and One-to-One Scarico (€) per promoter!
  */
 export function parseStaffTicketSmsReport(
-  rawText: string
+  rawText: string,
+  options?: { excludePromoters?: string[] }
 ): { promoterName: string; quantity: number; revenue: number; scarico: number }[] {
   const lines = rawText
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
   if (lines.length === 0) return [];
+
+  const excludedNormalized = (options?.excludePromoters || [])
+    .map(normalizePromoterKey)
+    .filter(Boolean);
 
   const delimiter = lines[0].includes('\t') ? '\t' : lines[0].includes(';') ? ';' : ',';
   const rows = lines.map((l) => l.split(delimiter).map((c) => c.trim().replace(/^"|"$/g, '')));
@@ -435,6 +464,7 @@ export function parseStaffTicketSmsReport(
   for (const row of dataRows) {
     const name = (row[0] || '').trim();
     if (!name || name.toLowerCase() === 'totale' || name.toLowerCase() === 'promoter') continue;
+    if (isExcludedPromoterName(name, excludedNormalized)) continue;
     const key = name.toLowerCase();
     const acc = grouped.get(key) || { promoterName: name, quantity: 0, revenue: 0, scarico: 0 };
 

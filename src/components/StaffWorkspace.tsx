@@ -2047,18 +2047,14 @@ export function StaffWorkspace({
         open={memberModalOpen}
         onClose={() => setMemberModalOpen(false)}
         title={editingMemberId ? 'Modifica sotto-PR' : 'Nuovo sotto-PR'}
-        subtitle={
-          ownerPromoterId === 'lollo'
-            ? 'Configura nome, soprannome, alias per TicketSMS e busta personale.'
-            : 'Configura nome, soprannome, alias e busta personale.'
-        }
+        subtitle="Configura nome, soprannome, alias per TicketSMS e busta personale."
         maxWidth="max-w-[540px]"
       >
         <form onSubmit={handleSaveMember} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-[12px] font-medium mb-1" style={{ color: 'var(--ink-secondary)' }}>
-                {ownerPromoterId === 'lollo' ? 'Nome completo (come su TicketSMS)' : 'Nome completo'}
+                Nome completo (come su TicketSMS)
               </label>
               <input
                 type="text"
@@ -2086,9 +2082,7 @@ export function StaffWorkspace({
 
           <div>
             <label className="block text-[12px] font-medium mb-1" style={{ color: 'var(--ink-secondary)' }}>
-              {ownerPromoterId === 'lollo'
-                ? 'Alias separati da virgola (per collegare automaticamente tavoli e TicketSMS)'
-                : 'Alias separati da virgola (per collegare automaticamente tavoli e import CSV)'}
+              Alias separati da virgola (per collegare automaticamente tavoli e TicketSMS)
             </label>
             <input
               type="text"
