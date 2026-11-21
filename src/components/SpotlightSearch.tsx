@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Calendar, Search, Sparkles, X } from 'lucide-react';
 import { APPLE_SPRING_SNAPPY } from './ui/AppleControls';
@@ -50,6 +51,11 @@ export function SpotlightSearch({
 
   useEffect(() => {
     if (!open) return;
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
@@ -66,14 +72,21 @@ export function SpotlightSearch({
       }
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      if (window.scrollX !== 0) {
+        window.scrollTo({ left: 0, top: window.scrollY });
+      }
+    };
   }, [open, results, cursor, onSelectEvent, onClose]);
 
-  return (
+  const content = (
     <AnimatePresence>
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh] px-4"
+          className="fixed inset-0 z-50 flex items-start justify-center pt-[max(12vh,calc(env(safe-area-inset-top)+16px))] px-4 overflow-x-hidden"
           role="dialog"
           aria-modal="true"
           aria-label="Ricerca rapida serate e tavoli"
@@ -203,4 +216,7 @@ export function SpotlightSearch({
       )}
     </AnimatePresence>
   );
+
+  if (typeof document === 'undefined') return content;
+  return createPortal(content, document.body);
 }

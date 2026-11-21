@@ -275,6 +275,14 @@ export function CashCollectionView({
       return;
     }
 
+    // Dismiss mobile keyboard before state/toast updates so iOS Safari never shifts the viewport horizontally
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+
+    const currentOwed = activeTarget.rollup?.mancantiTotal ?? 0;
+    const settlesBalance = currentOwed > 0.01 && Math.abs(currentOwed - finalAmt) <= 0.01;
+
     setSubmitting(true);
     try {
       const saved = await staffData.recordCashPayment({
@@ -301,6 +309,12 @@ export function CashCollectionView({
         setAmountDraft('');
         setNote('');
         setIsCorrection(false);
+        if (settlesBalance) {
+          setTargetPrKey(null);
+        }
+        if (typeof window !== 'undefined' && window.scrollX !== 0) {
+          window.scrollTo({ left: 0, top: window.scrollY });
+        }
       }
     } finally {
       setSubmitting(false);
@@ -421,6 +435,7 @@ export function CashCollectionView({
           <SegmentedControl<CashTab>
             ariaLabel="Modalità raccolta soldi"
             size="sm"
+            className="w-full sm:w-auto"
             value={activeTab}
             onChange={setActiveTab}
             options={[
@@ -439,8 +454,8 @@ export function CashCollectionView({
       </div>
 
       {/* Active Event Switcher Bar */}
-      <div className="apple-card p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+      <div className="apple-card p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 overflow-hidden">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1 w-full">
           <span
             className="h-3 w-3 rounded-full shrink-0"
             style={{ backgroundColor: venueColor }}
@@ -449,7 +464,7 @@ export function CashCollectionView({
             aria-label="Seleziona serata per la raccolta soldi"
             value={activeEvent.id}
             onChange={(e) => onSelectEvent(e.target.value)}
-            className="apple-input flex-1 min-w-0 rounded-[10px] px-3 py-2 text-[16px] md:text-[14px] font-semibold cursor-pointer"
+            className="apple-input flex-1 w-full max-w-full min-w-0 overflow-hidden text-ellipsis rounded-[10px] px-3 py-2 text-[16px] md:text-[14px] font-semibold cursor-pointer"
           >
             {events.map((ev) => {
               const ss = staffData.summariesByEvent.get(ev.id);
@@ -486,27 +501,27 @@ export function CashCollectionView({
       {/* Live Cash Progress Hero */}
       <section className="apple-card overflow-hidden">
         <div className="grid grid-cols-3 divide-x divide-[var(--separator)]">
-          <div className="p-3.5 sm:p-5">
-            <span className="text-[11px] sm:text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+          <div className="p-2.5 sm:p-5 min-w-0">
+            <span className="block truncate text-[11px] sm:text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Incassato
             </span>
             <div
-              className="mt-1 text-[20px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap"
+              className="mt-1 text-[15px] min-[390px]:text-[17px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none truncate"
               style={{ color: 'var(--status-green)' }}
             >
               {formatEur(activeSummary.totalPaidCash)}
             </div>
-            <div className="mt-1 text-[11px] tabular-nums" style={{ color: 'var(--ink-tertiary)' }}>
-              {eventTransactions.length} movimenti
+            <div className="mt-1 text-[10px] sm:text-[11px] tabular-nums truncate" style={{ color: 'var(--ink-tertiary)' }}>
+              {eventTransactions.length} mov.
             </div>
           </div>
 
-          <div className="p-3.5 sm:p-5">
-            <span className="text-[11px] sm:text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+          <div className="p-2.5 sm:p-5 min-w-0">
+            <span className="block truncate text-[11px] sm:text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Da raccogliere
             </span>
             <div
-              className="mt-1 text-[20px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap"
+              className="mt-1 text-[15px] min-[390px]:text-[17px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none truncate"
               style={{
                 color:
                   activeSummary.totalMancanti > 0.01
@@ -516,21 +531,21 @@ export function CashCollectionView({
             >
               {formatEur(activeSummary.totalMancanti)}
             </div>
-            <div className="mt-1 text-[11px] tabular-nums" style={{ color: 'var(--ink-tertiary)' }}>
+            <div className="mt-1 text-[10px] sm:text-[11px] tabular-nums truncate" style={{ color: 'var(--ink-tertiary)' }}>
               {prCards.owing.length === 0
                 ? 'Tutti in pari'
                 : `${prCards.owing.length} PR aperti`}
             </div>
           </div>
 
-          <div className="p-3.5 sm:p-5">
-            <span className="text-[11px] sm:text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+          <div className="p-2.5 sm:p-5 min-w-0">
+            <span className="block truncate text-[11px] sm:text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Scarico serata
             </span>
-            <div className="mt-1 text-[20px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap">
+            <div className="mt-1 text-[15px] min-[390px]:text-[17px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none truncate">
               {formatEur(activeSummary.totalScarico)}
             </div>
-            <div className="mt-1 text-[11px] tabular-nums" style={{ color: 'var(--ink-tertiary)' }}>
+            <div className="mt-1 text-[10px] sm:text-[11px] tabular-nums truncate" style={{ color: 'var(--ink-tertiary)' }}>
               Esclusi no-scarico
             </div>
           </div>
@@ -696,9 +711,9 @@ export function CashCollectionView({
                         fullName: r.fullName,
                       })
                     }
-                    className="apple-card p-4 text-left flex items-center justify-between gap-3 apple-press cursor-pointer hover:ring-1 hover:ring-[var(--accent)] transition-[box-shadow,transform]"
+                    className="apple-card w-full min-w-0 overflow-hidden p-3.5 sm:p-4 text-left flex items-center justify-between gap-2.5 sm:gap-3 apple-press cursor-pointer hover:ring-1 hover:ring-[var(--accent)] transition-[box-shadow,transform]"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
                       <div
                         className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[14px] font-bold"
                         style={{
@@ -711,7 +726,7 @@ export function CashCollectionView({
                         {r.displayName.slice(0, 2).toUpperCase()}
                       </div>
 
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <span className="text-[16px] font-bold truncate">{r.displayName}</span>
                           {txCount > 0 && (
@@ -832,7 +847,7 @@ export function CashCollectionView({
                 ]}
               />
 
-              <div className="flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1">
                 {(['ALL', 'cash', 'transfer', 'card'] as const).map((m) => {
                   const active = historyMethod === m;
                   const lbl =
@@ -928,9 +943,9 @@ export function CashCollectionView({
                       return (
                         <div
                           key={tx.id}
-                          className="px-4 py-3 flex items-center justify-between gap-3"
+                          className="px-3.5 sm:px-4 py-3 flex items-center justify-between gap-2.5 sm:gap-3"
                         >
-                          <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
                             <span
                               className="text-[12px] font-semibold tabular-nums px-2 py-1 rounded-[8px] shrink-0"
                               style={{
@@ -1050,7 +1065,7 @@ export function CashCollectionView({
 
             {/* Big Numeric Input + Clear + Correction toggle */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
                 <label
                   htmlFor="cash-collect-amount"
                   className="text-[12px] font-medium"
@@ -1058,7 +1073,7 @@ export function CashCollectionView({
                 >
                   {isCorrection ? 'Importo da stornare / resto dato (€)' : 'Soldi consegnati ora (€)'}
                 </label>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   {parsedDraftAmount > 0 && (
                     <button
                       type="button"
@@ -1146,7 +1161,7 @@ export function CashCollectionView({
                     key={amt}
                     type="button"
                     onClick={() => handleQuickAddChip(amt)}
-                    className="rounded-[10px] py-2.5 text-[13px] font-bold tabular-nums apple-press cursor-pointer transition-colors"
+                    className="rounded-[10px] px-1 py-2.5 min-h-[42px] text-[12px] sm:text-[13px] font-bold tabular-nums apple-press cursor-pointer transition-colors"
                     style={{
                       backgroundColor: 'var(--bg-surface-secondary)',
                       color: 'var(--ink-primary)',
@@ -1245,7 +1260,7 @@ export function CashCollectionView({
                       key={tx.id}
                       className="px-3 py-2 flex items-center justify-between gap-2 text-[13px] tabular-nums"
                     >
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1 break-words">
                         <span className="font-semibold" style={{ color: 'var(--ink-secondary)' }}>
                           {formatTimeHHMM(tx.recorded_at)}
                         </span>

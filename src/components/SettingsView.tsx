@@ -321,8 +321,8 @@ export function SettingsView({
             <>
               <div className="apple-surface rounded-[16px] overflow-hidden">
                 <div className="apple-list">
-                  <div className="flex items-center justify-between gap-4 px-5 py-3.5">
-                    <div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4 px-4 sm:px-5 py-3.5">
+                    <div className="min-w-0">
                       <div className="text-[14px] font-medium">Nome squadra / intestazione</div>
                       <div className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
                         Visibile nella sidebar e nei riepiloghi
@@ -337,7 +337,7 @@ export function SettingsView({
                         const v = e.target.value.trim();
                         if (v && v !== settings.team_name) onUpdateSettings({ team_name: v });
                       }}
-                      className="apple-input w-44 rounded-[8px] px-3 py-1.5 text-[14px] font-medium text-right"
+                      className="apple-input w-full sm:w-44 rounded-[8px] px-3 py-1.5 text-[16px] md:text-[14px] font-medium sm:text-right"
                     />
                   </div>
 
@@ -496,10 +496,10 @@ export function SettingsView({
                   ))}
 
                   <div
-                    className="flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+                    className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-3"
                     style={{ backgroundColor: 'var(--bg-hover)' }}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
                         Soglia
                       </span>
@@ -658,7 +658,7 @@ export function SettingsView({
                 {promoters.map((p) => (
                   <div
                     key={p.id}
-                    className="flex items-center justify-between gap-3 px-5 py-3.5"
+                    className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-3.5"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <span
@@ -798,7 +798,7 @@ export function SettingsView({
                         if (e.key === 'Enter') saveQuickPrices();
                       }}
                       aria-label="Prezzi rapidi tavoli"
-                      className="apple-input w-40 rounded-[8px] px-3 py-1.5 text-[14px] tabular-nums"
+                      className="apple-input w-full sm:w-40 rounded-[8px] px-3 py-1.5 text-[16px] md:text-[14px] tabular-nums"
                     />
                   </div>
                 </div>
@@ -1016,7 +1016,7 @@ export function SettingsView({
                       value={newPin}
                       onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
                       placeholder="••••••"
-                      className="apple-input w-full rounded-[10px] px-3 py-2 text-[15px] tracking-widest tabular-nums"
+                      className="apple-input w-full rounded-[10px] px-3 py-2 text-[16px] md:text-[15px] tracking-widest tabular-nums"
                     />
                   </div>
                   <div>
@@ -1035,7 +1035,7 @@ export function SettingsView({
                       value={confirmPin}
                       onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
                       placeholder="••••••"
-                      className="apple-input w-full rounded-[10px] px-3 py-2 text-[15px] tracking-widest tabular-nums"
+                      className="apple-input w-full rounded-[10px] px-3 py-2 text-[16px] md:text-[15px] tracking-widest tabular-nums"
                     />
                   </div>
                 </div>
@@ -1057,8 +1057,8 @@ export function SettingsView({
           {section === 'data' && (
             <div className="apple-surface rounded-[16px] overflow-hidden">
               <div className="apple-list">
-                <div className="flex items-center justify-between gap-4 px-5 py-4">
-                  <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 px-4 sm:px-5 py-4">
+                  <div className="min-w-0">
                     <div className="text-[14px] font-medium">Esporta riepilogo CSV (Excel / Sheets)</div>
                     <div className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
                       Tabella completa di tutte le {events.length} serate con PX, fatturato, buste e scarichi
@@ -1067,7 +1067,7 @@ export function SettingsView({
                   <button
                     type="button"
                     onClick={handleExportCsv}
-                    className="inline-flex items-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[13px] font-semibold text-white apple-press cursor-pointer shrink-0"
+                    className="inline-flex items-center justify-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[13px] font-semibold text-white apple-press cursor-pointer shrink-0 self-start sm:self-auto"
                     style={{ backgroundColor: 'var(--accent)' }}
                   >
                     <Download className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1075,8 +1075,8 @@ export function SettingsView({
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between gap-4 px-5 py-4">
-                  <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 px-4 sm:px-5 py-4">
+                  <div className="min-w-0">
                     <div className="text-[14px] font-medium">Backup completo JSON</div>
                     <div className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
                       Include ogni singolo tavolo, prevendita, locale, PR e impostazione
@@ -1085,7 +1085,7 @@ export function SettingsView({
                   <button
                     type="button"
                     onClick={handleExportJson}
-                    className="inline-flex items-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[13px] font-semibold apple-press cursor-pointer shrink-0"
+                    className="inline-flex items-center justify-center gap-1.5 rounded-[10px] px-3.5 py-2 text-[13px] font-semibold apple-press cursor-pointer shrink-0 self-start sm:self-auto"
                     style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
                   >
                     <Download className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1128,7 +1128,7 @@ export function SettingsView({
               value={editingVenue.name}
               onChange={(e) => setEditingVenue((v) => ({ ...v, name: e.target.value }))}
               placeholder="Es. Touchè, Million, TPF…"
-              className="apple-input w-full rounded-[10px] px-3 py-2 text-[15px]"
+              className="apple-input w-full rounded-[10px] px-3 py-2 text-[16px] md:text-[15px]"
             />
           </div>
 
@@ -1266,7 +1266,7 @@ export function SettingsView({
               required
               value={editingPr.display_name}
               onChange={(e) => setEditingPr((p) => ({ ...p, display_name: e.target.value }))}
-              className="apple-input w-full rounded-[10px] px-3 py-2 text-[15px]"
+              className="apple-input w-full rounded-[10px] px-3 py-2 text-[16px] md:text-[15px]"
             />
           </div>
           <div>
@@ -1283,7 +1283,7 @@ export function SettingsView({
               required
               value={editingPr.full_name}
               onChange={(e) => setEditingPr((p) => ({ ...p, full_name: e.target.value }))}
-              className="apple-input w-full rounded-[10px] px-3 py-2 text-[15px]"
+              className="apple-input w-full rounded-[10px] px-3 py-2 text-[16px] md:text-[15px]"
             />
           </div>
           <div>

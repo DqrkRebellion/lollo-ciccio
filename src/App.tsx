@@ -54,6 +54,16 @@ export default function App() {
   const [cashEventId, setCashEventId] = useState<string | null>(null);
   const [newEventOpen, setNewEventOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)').matches : true
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   useEffect(() => {
     getBiometricCapability().then(setBioCap);
@@ -92,13 +102,14 @@ export default function App() {
 
   const ownerPromoterId: 'lollo' | 'ciccio' =
     currentAccount.promoterId === 'ciccio' ? 'ciccio' : 'lollo';
+  const ticketSmsEnabled = ownerPromoterId === 'lollo';
 
   const isUnlocked = Boolean(session) && visitUnlocked;
   const data = useAppData(isUnlocked);
   const staffData = useStaffData(isUnlocked, ownerPromoterId, data.pushUndo, () => {
     data.fetchAll(true);
   });
-  const ticketSmsData = useTicketSmsData(isUnlocked, () => {
+  const ticketSmsData = useTicketSmsData(isUnlocked && ticketSmsEnabled, () => {
     data.fetchAll(true);
     staffData.fetchStaff(true);
   });
@@ -181,7 +192,18 @@ export default function App() {
   return (
     <>
       <Toaster
-        position="bottom-right"
+        position={isDesktop ? 'bottom-right' : 'top-center'}
+        offset={
+          isDesktop
+            ? 20
+            : { top: 'calc(env(safe-area-inset-top) + 12px)', left: 12, right: 12 }
+        }
+        mobileOffset={{
+          top: 'calc(env(safe-area-inset-top) + 12px)',
+          left: 12,
+          right: 12,
+          bottom: 16,
+        }}
         theme={isDark ? 'dark' : 'light'}
         toastOptions={{
           style: {
@@ -254,6 +276,7 @@ export default function App() {
                   staffMembers={staffData.members}
                   staffMemberUsageScore={staffData.memberUsageScore}
                   staffTableByEventTableId={staffData.staffTableByEventTableId}
+                  ticketSmsEnabled={ticketSmsEnabled}
                   ticketSmsData={ticketSmsData}
                   canUndo={data.canUndo}
                   canRedo={data.canRedo}

@@ -528,11 +528,11 @@ export function TicketSmsPresalesTable({
           borderBottom: '0.5px solid var(--separator)',
         }}
       >
-        <div className="px-3.5 py-2.5">
-          <div className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+        <div className="px-3.5 py-2.5 min-w-0">
+          <div className="text-[11px] truncate" style={{ color: 'var(--ink-secondary)' }}>
             Venduti
           </div>
-          <div className="text-[16px] font-bold leading-snug">
+          <div className="text-[16px] font-bold leading-snug truncate">
             {formatInt(totals.totalQty)}
             {tsEvent.entered > 0 && (
               <span
@@ -545,20 +545,20 @@ export function TicketSmsPresalesTable({
           </div>
         </div>
 
-        <div className="px-3.5 py-2.5">
-          <div className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+        <div className="px-3.5 py-2.5 min-w-0">
+          <div className="text-[11px] truncate" style={{ color: 'var(--ink-secondary)' }}>
             Incasso
           </div>
-          <div className="text-[16px] font-bold leading-snug" style={{ color: 'var(--accent)' }}>
+          <div className="text-[16px] font-bold leading-snug truncate" style={{ color: 'var(--accent)' }}>
             {formatEur(totals.totalRev, true)}
           </div>
         </div>
 
-        <div className="px-3.5 py-2.5">
-          <div className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+        <div className="px-3.5 py-2.5 min-w-0">
+          <div className="text-[11px] truncate" style={{ color: 'var(--ink-secondary)' }}>
             One to One (Scarico)
           </div>
-          <div className="text-[15px] font-bold leading-snug">
+          <div className="text-[15px] font-bold leading-snug truncate">
             {formatEur(totals.otoRev, true)}
             <span className="ml-1 text-[11px] font-normal" style={{ color: 'var(--ink-tertiary)' }}>
               ({formatInt(totals.otoQty)})
@@ -566,11 +566,11 @@ export function TicketSmsPresalesTable({
           </div>
         </div>
 
-        <div className="px-3.5 py-2.5">
-          <div className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+        <div className="px-3.5 py-2.5 min-w-0">
+          <div className="text-[11px] truncate" style={{ color: 'var(--ink-secondary)' }}>
             Online
           </div>
-          <div className="text-[15px] font-bold leading-snug">
+          <div className="text-[15px] font-bold leading-snug truncate">
             {formatEur(totals.onlineRev, true)}
             <span className="ml-1 text-[11px] font-normal" style={{ color: 'var(--ink-tertiary)' }}>
               ({formatInt(totals.onlineQty)})
@@ -579,11 +579,11 @@ export function TicketSmsPresalesTable({
         </div>
 
         {hasCassa && (
-          <div className="px-3.5 py-2.5">
-            <div className="text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+          <div className="px-3.5 py-2.5 min-w-0">
+            <div className="text-[11px] truncate" style={{ color: 'var(--ink-secondary)' }}>
               Cassa
             </div>
-            <div className="text-[15px] font-bold leading-snug">
+            <div className="text-[15px] font-bold leading-snug truncate">
               {formatEur(totals.boxRev, true)}
               <span className="ml-1 text-[11px] font-normal" style={{ color: 'var(--ink-tertiary)' }}>
                 ({formatInt(totals.boxQty)})

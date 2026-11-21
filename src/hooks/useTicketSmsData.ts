@@ -190,6 +190,11 @@ export function useTicketSmsData(
 
   useEffect(() => {
     if (!isAuthenticated) {
+      setEvents([]);
+      setTicketTypes([]);
+      setTeamSales([]);
+      setReportRows([]);
+      setSyncStatus(null);
       setLoading(false);
       return;
     }

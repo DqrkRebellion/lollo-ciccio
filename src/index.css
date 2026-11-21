@@ -82,6 +82,9 @@
     color: var(--ink-primary);
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
+    max-width: 100%;
+    overflow-x: clip;
+    overscroll-behavior-x: none;
   }
 
   @media (pointer: fine) {
@@ -93,9 +96,18 @@
   body {
     margin: 0;
     min-height: 100dvh;
+    width: 100%;
+    max-width: 100%;
     background-color: var(--bg-canvas);
     color: var(--ink-primary);
-    overflow-x: hidden;
+    overflow-x: clip;
+    overscroll-behavior-x: none;
+  }
+
+  #root {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: clip;
   }
 
   /* Optical typography sizing */
@@ -246,5 +258,19 @@ input[type="number"] {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Fix Sonner 2.x mobile horizontal overflow (left: 16px + width: 100% pushes viewport left on iOS!) */
+@media (max-width: 600px) {
+  [data-sonner-toaster] {
+    width: auto !important;
+    max-width: calc(100vw - 24px) !important;
+  }
+
+  [data-sonner-toaster] [data-sonner-toast] {
+    width: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
   }
 }

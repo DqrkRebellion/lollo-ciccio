@@ -58,6 +58,19 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: 'Sessione non valida o scaduta' }, 401, origin);
     }
 
+    // 1b. Strictly restrict TicketSMS sync to Lollo's profile
+    const metaPromoter = String(userData.user.user_metadata?.promoter_id || '').toLowerCase();
+    const userEmail = String(userData.user.email || '').toLowerCase();
+    const isLollo =
+      metaPromoter === 'lollo' || (!metaPromoter && userEmail.startsWith('lollo@'));
+    if (!isLollo) {
+      return jsonResponse(
+        { error: 'La sincronizzazione TicketSMS è riservata al profilo Lollo' },
+        403,
+        origin
+      );
+    }
+
     // 2. Read server-side GitHub secrets (never exposed to client)
     const githubToken = (Deno.env.get('GITHUB_TOKEN') || '').trim();
     const githubOwner = (Deno.env.get('GITHUB_OWNER') || '').trim();

@@ -189,13 +189,14 @@ export function LedgerView({
       {/* Section Switcher */}
       <SegmentedControl<'MANCANTI' | 'BUSTE_APERTE' | 'BUSTE_SALDATE'>
         ariaLabel="Vista saldi"
+        size="sm"
         value={tab}
         onChange={setTab}
         className="w-full sm:w-auto"
         options={[
           { value: 'MANCANTI', label: `Mancanti (${ledgerStats.withMancanti.length})` },
-          { value: 'BUSTE_APERTE', label: `Buste aperte (${ledgerStats.unpaidBuste.length})` },
-          { value: 'BUSTE_SALDATE', label: `Buste saldate (${ledgerStats.paidBuste.length})` },
+          { value: 'BUSTE_APERTE', label: `Aperte (${ledgerStats.unpaidBuste.length})` },
+          { value: 'BUSTE_SALDATE', label: `Saldate (${ledgerStats.paidBuste.length})` },
         ]}
       />
 
@@ -221,7 +222,7 @@ export function LedgerView({
                 return (
                   <div
                     key={ev.id}
-                    className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 hover:bg-[var(--bg-hover)] transition-colors"
+                    className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-3.5 hover:bg-[var(--bg-hover)] transition-colors"
                   >
                     <button
                       type="button"

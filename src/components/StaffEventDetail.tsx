@@ -417,7 +417,9 @@ export function StaffEventDetail({
             style={{ color: 'var(--accent)' }}
           >
             <FileSpreadsheet className="h-3.5 w-3.5" aria-hidden="true" />
-            <span className="hidden sm:inline">Importa TicketSMS</span>
+            <span className="hidden sm:inline">
+              {ownerPromoterId === 'lollo' ? 'Importa TicketSMS' : 'Importa CSV'}
+            </span>
             <span className="sm:hidden">Importa</span>
           </button>
 
@@ -458,11 +460,11 @@ export function StaffEventDetail({
       {/* Hero Staff Financial Strip (5 KPIs: PX, Mancanti, Buste Staff, TUA BUSTA, TUO MARGINE NETTO) */}
       <section className="apple-surface rounded-[18px] overflow-hidden mb-5">
         <div className="grid grid-cols-2 lg:grid-cols-5 divide-y lg:divide-y-0 divide-x divide-[var(--separator)]">
-          <div className="p-3.5 sm:p-4">
-            <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+          <div className="p-3.5 sm:p-4 min-w-0">
+            <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Persone {staffGroup.name}
             </span>
-            <div className="mt-1 text-[22px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none">
+            <div className="mt-1 text-[20px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none">
               {formatInt(staffSummary.pxTotal)}
               <span className="ml-1 text-[13px] font-medium" style={{ color: 'var(--ink-tertiary)' }}>
                 px
@@ -473,16 +475,16 @@ export function StaffEventDetail({
             </div>
           </div>
 
-          <div className="p-3.5 sm:p-4">
+          <div className="p-3.5 sm:p-4 min-w-0">
             <div className="flex items-center justify-between gap-1.5">
-              <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+              <span className="text-[12px] font-medium truncate" style={{ color: 'var(--ink-secondary)' }}>
                 Mancanti staff
               </span>
               {staffSummary.totalMancanti > 0.01 && (
                 <button
                   type="button"
                   onClick={handleSettleAllStaff}
-                  className="text-[11px] font-semibold cursor-pointer apple-press"
+                  className="text-[11px] font-semibold cursor-pointer apple-press shrink-0"
                   style={{ color: 'var(--accent)' }}
                 >
                   Salda tutto
@@ -497,11 +499,11 @@ export function StaffEventDetail({
             </div>
           </div>
 
-          <div className="p-3.5 sm:p-4">
-            <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+          <div className="p-3.5 sm:p-4 min-w-0">
+            <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Buste staff
             </span>
-            <div className="mt-1 text-[22px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap">
+            <div className="mt-1 text-[20px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none truncate">
               {formatEur(staffSummary.totalBusta, true)}
             </div>
             <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
@@ -519,12 +521,12 @@ export function StaffEventDetail({
             </div>
           </div>
 
-          <div className="p-3.5 sm:p-4">
-            <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+          <div className="p-3.5 sm:p-4 min-w-0">
+            <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Tua busta serata
             </span>
             <div
-              className="mt-1 text-[22px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap"
+              className="mt-1 text-[20px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none truncate"
               style={{ color: 'var(--accent)' }}
             >
               {formatEur(ownerMainBusta, true)}
@@ -553,12 +555,12 @@ export function StaffEventDetail({
             </div>
           </div>
 
-          <div className="p-3.5 sm:p-4 col-span-2 lg:col-span-1">
-            <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+          <div className="p-3.5 sm:p-4 col-span-2 lg:col-span-1 min-w-0">
+            <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Tuo margine netto
             </span>
             <div
-              className="mt-1 text-[22px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap"
+              className="mt-1 text-[20px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none truncate"
               style={{
                 color: ownerNetMargin >= 0 ? 'var(--status-green)' : 'var(--status-red)',
               }}
@@ -576,12 +578,13 @@ export function StaffEventDetail({
       <div className="flex flex-wrap items-center justify-between gap-2.5 mb-4">
         <SegmentedControl<StaffSubView>
           ariaLabel="Vista dettaglio staff"
+          size="sm"
           value={subView}
           onChange={setSubView}
           className="w-full sm:w-auto"
           options={[
-            { value: 'rollup', label: `Riepilogo PR (${staffSummary.membersRollup.length})` },
-            { value: 'presales', label: `Prevendite (${staffSummary.presales.length})` },
+            { value: 'rollup', label: `Riepilogo (${staffSummary.membersRollup.length})` },
+            { value: 'presales', label: `Preve (${staffSummary.presales.length})` },
             { value: 'tables', label: `Tavoli (${staffSummary.tables.length})` },
           ]}
         />
@@ -639,8 +642,9 @@ export function StaffEventDetail({
                 Nessun dato {staffGroup.name} registrato in questa serata
               </p>
               <p className="text-[13px] max-w-md mx-auto" style={{ color: 'var(--ink-secondary)' }}>
-                Incolla il report TicketSMS oppure aggiungi manualmente i tavoli e le prevendite dei
-                tuoi sotto-PR.
+                {ownerPromoterId === 'lollo'
+                  ? 'Incolla il report TicketSMS oppure aggiungi manualmente i tavoli e le prevendite dei tuoi sotto-PR.'
+                  : 'Incolla un report CSV/Excel oppure aggiungi manualmente i tavoli e le prevendite dei tuoi sotto-PR.'}
               </p>
               <div className="flex flex-wrap justify-center gap-2 pt-1">
                 <button
@@ -650,7 +654,7 @@ export function StaffEventDetail({
                   style={{ backgroundColor: 'var(--accent)' }}
                 >
                   <FileSpreadsheet className="h-4 w-4" aria-hidden="true" />
-                  Importa TicketSMS
+                  {ownerPromoterId === 'lollo' ? 'Importa TicketSMS' : 'Importa CSV'}
                 </button>
                 <button
                   type="button"
@@ -687,7 +691,7 @@ export function StaffEventDetail({
                           aria-label={`Piano busta ${r.displayName}`}
                           value={r.member.plan_id || ''}
                           onChange={(e) => onAssignMemberPlan(r.member!, e.target.value || null)}
-                          className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold cursor-pointer"
+                          className="rounded-full px-2.5 py-0.5 text-[16px] md:text-[11px] font-semibold cursor-pointer max-w-full"
                           style={{
                             backgroundColor: 'var(--bg-surface-secondary)',
                             color: 'var(--ink-secondary)',
@@ -754,12 +758,12 @@ export function StaffEventDetail({
                   style={{ borderTop: '0.5px solid var(--separator)' }}
                 >
                   {/* Left: Cash (Scarico -> Dati -> Mancanti) */}
-                  <div className="flex items-center justify-between gap-2 rounded-[12px] px-3.5 py-2.5" style={{ backgroundColor: 'var(--bg-surface-secondary)' }}>
-                    <div className="tabular-nums">
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-[12px] px-3.5 py-2.5 min-w-0" style={{ backgroundColor: 'var(--bg-surface-secondary)' }}>
+                    <div className="tabular-nums min-w-0">
                       <div className="text-[11px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
                         Cassa · Scarico {formatEur(r.scaricoTotal)}
                       </div>
-                      <div className="mt-1 flex items-center gap-2">
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
                         <MancantiBadge value={r.mancantiTotal} compact />
                         <span className="text-[11px]" style={{ color: 'var(--ink-tertiary)' }}>
                           Dati {formatEur(r.paidCashTotal)}
@@ -783,8 +787,8 @@ export function StaffEventDetail({
                   </div>
 
                   {/* Right: Busta (Preve + Tavoli + Pagata switch) */}
-                  <div className="flex items-center justify-between gap-2 rounded-[12px] px-3.5 py-2.5" style={{ backgroundColor: 'var(--bg-surface-secondary)' }}>
-                    <div className="tabular-nums">
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-[12px] px-3.5 py-2.5 min-w-0" style={{ backgroundColor: 'var(--bg-surface-secondary)' }}>
+                    <div className="tabular-nums min-w-0">
                       <div className="text-[11px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
                         Busta · Preve {formatEur(r.presalesBusta, true)} + Tavoli{' '}
                         {formatEur(r.tablesBusta, true)}
@@ -858,8 +862,8 @@ export function StaffEventDetail({
                   </div>
 
                   <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                    <div className="min-w-0">
+                      <span className="block text-[11px] mb-1 truncate" style={{ color: 'var(--ink-secondary)' }}>
                         N. preve
                       </span>
                       <NumericCellInput
@@ -869,8 +873,8 @@ export function StaffEventDetail({
                         ariaLabel="Numero prevendite"
                       />
                     </div>
-                    <div>
-                      <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                    <div className="min-w-0">
+                      <span className="block text-[11px] mb-1 truncate" style={{ color: 'var(--ink-secondary)' }}>
                         € preve
                       </span>
                       <NumericCellInput
@@ -879,8 +883,8 @@ export function StaffEventDetail({
                         ariaLabel="Incasso prevendite"
                       />
                     </div>
-                    <div>
-                      <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                    <div className="min-w-0">
+                      <span className="block text-[11px] mb-1 truncate" style={{ color: 'var(--ink-secondary)' }}>
                         Scarico €
                       </span>
                       <NumericCellInput
@@ -997,7 +1001,9 @@ export function StaffEventDetail({
                       className="py-10 text-center"
                       style={{ color: 'var(--ink-secondary)' }}
                     >
-                      Nessuna prevendita registrata. Incolla il report TicketSMS o aggiungi un PR.
+                      {ownerPromoterId === 'lollo'
+                        ? 'Nessuna prevendita registrata. Incolla il report TicketSMS o aggiungi un PR.'
+                        : 'Nessuna prevendita registrata. Incolla un report CSV/Excel o aggiungi un PR.'}
                     </td>
                   </tr>
                 ) : (
@@ -1225,7 +1231,7 @@ export function StaffEventDetail({
                     </div>
 
                     {/* Stepper + Price + Extra toggle */}
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <AppleStepper
                           size="sm"
@@ -1636,12 +1642,20 @@ export function StaffEventDetail({
         {subView === 'presales' ? 'PR' : 'Tavolo'}
       </button>
 
-      {/* Import TicketSMS Modal */}
+      {/* Import Presales Report Modal */}
       <AppleModal
         open={showImportModal}
         onClose={() => setShowImportModal(false)}
-        title={`Importa report TicketSMS · ${staffGroup.name}`}
-        subtitle="Incolla le righe dal report TicketSMS (colonne A:L del foglio Reverse): raggruppa automaticamente ogni sotto-PR, calcola scarichi e buste."
+        title={
+          ownerPromoterId === 'lollo'
+            ? `Importa report TicketSMS · ${staffGroup.name}`
+            : `Importa report prevendite · ${staffGroup.name}`
+        }
+        subtitle={
+          ownerPromoterId === 'lollo'
+            ? 'Incolla le righe dal report TicketSMS (colonne A:L del foglio Reverse): raggruppa automaticamente ogni sotto-PR, calcola scarichi e buste.'
+            : 'Incolla le righe dal tuo foglio Excel o Google Sheets: raggruppa automaticamente ogni sotto-PR, calcola scarichi e buste.'
+        }
         maxWidth="max-w-[580px]"
       >
         <div className="space-y-4">
@@ -1649,8 +1663,12 @@ export function StaffEventDetail({
             rows={7}
             value={importText}
             onChange={(e) => setImportText(e.target.value)}
-            placeholder="Incolla qui direttamente da TicketSMS / Excel / Google Sheets…"
-            className="apple-input w-full rounded-[12px] p-3 text-[13px] font-mono"
+            placeholder={
+              ownerPromoterId === 'lollo'
+                ? 'Incolla qui direttamente da TicketSMS / Excel / Google Sheets…'
+                : 'Incolla qui direttamente da Excel / Google Sheets…'
+            }
+            className="apple-input w-full rounded-[12px] p-3 text-[16px] md:text-[13px] font-mono"
           />
 
           {importPreview.length > 0 && (

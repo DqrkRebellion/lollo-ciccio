@@ -657,11 +657,11 @@ export function EventDetail({
       <section className="apple-surface rounded-[18px] overflow-hidden mb-6">
         <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 divide-x divide-[var(--separator)]">
           {/* PX Totali */}
-          <div className="p-3.5 sm:p-5">
+          <div className="p-3.5 sm:p-5 min-w-0">
             <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Ingressi totali
             </span>
-            <div className="mt-1 text-[24px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none">
+            <div className="mt-1 text-[20px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none">
               {formatInt(summary.pxTotal)}
               <span className="ml-1 text-[13px] font-medium" style={{ color: 'var(--ink-tertiary)' }}>
                 px
@@ -674,11 +674,11 @@ export function EventDetail({
           </div>
 
           {/* Fatturato Totale */}
-          <div className="p-3.5 sm:p-5">
+          <div className="p-3.5 sm:p-5 min-w-0">
             <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Fatturato totale
             </span>
-            <div className="mt-1 text-[24px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap">
+            <div className="mt-1 text-[20px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none truncate">
               {formatEur(summary.revenueTotal)}
             </div>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
@@ -688,15 +688,15 @@ export function EventDetail({
           </div>
 
           {/* Busta Totale */}
-          <div className="p-3.5 sm:p-5">
+          <div className="p-3.5 sm:p-5 min-w-0">
             <div className="flex items-center justify-between gap-1.5">
-              <span className="text-[12px] font-medium whitespace-nowrap" style={{ color: 'var(--ink-secondary)' }}>
+              <span className="text-[12px] font-medium truncate" style={{ color: 'var(--ink-secondary)' }}>
                 Busta serata
               </span>
               <button
                 type="button"
                 onClick={() => setShowFormula((s) => !s)}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold cursor-pointer whitespace-nowrap"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold cursor-pointer whitespace-nowrap shrink-0"
                 style={{ color: 'var(--accent)' }}
               >
                 <Info className="h-3 w-3" aria-hidden="true" />
@@ -704,7 +704,7 @@ export function EventDetail({
               </button>
             </div>
             <div
-              className="mt-1 text-[24px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap"
+              className="mt-1 text-[20px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none truncate"
               style={{ color: event.is_busta_paid ? 'var(--status-green)' : 'var(--ink-primary)' }}
             >
               {formatEur(summary.bustaTotal, true)}
@@ -741,16 +741,16 @@ export function EventDetail({
           </div>
 
           {/* Scarico & Mancanti */}
-          <div className="p-3.5 sm:p-5">
+          <div className="p-3.5 sm:p-5 min-w-0">
             <div className="flex items-center justify-between gap-1.5">
-              <span className="text-[12px] font-medium whitespace-nowrap" style={{ color: 'var(--ink-secondary)' }}>
+              <span className="text-[12px] font-medium truncate" style={{ color: 'var(--ink-secondary)' }}>
                 Mancanti
               </span>
               {summary.mancantiTotal > 0.01 && (
                 <button
                   type="button"
                   onClick={handleSettleAll}
-                  className="text-[11px] font-semibold cursor-pointer apple-press whitespace-nowrap"
+                  className="text-[11px] font-semibold cursor-pointer apple-press whitespace-nowrap shrink-0"
                   style={{ color: 'var(--accent)' }}
                 >
                   Salda tutto
@@ -1311,8 +1311,8 @@ export function EventDetail({
                   )}
               </div>
               <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                <div className="min-w-0">
+                  <span className="block text-[11px] mb-1 truncate" style={{ color: 'var(--ink-secondary)' }}>
                     N° Preve
                   </span>
                   <NumericCellInput
@@ -1322,8 +1322,8 @@ export function EventDetail({
                     ariaLabel="Totale prevendite serata"
                   />
                 </div>
-                <div>
-                  <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                <div className="min-w-0">
+                  <span className="block text-[11px] mb-1 truncate" style={{ color: 'var(--ink-secondary)' }}>
                     Incasso (€)
                   </span>
                   <NumericCellInput
@@ -1332,8 +1332,8 @@ export function EventDetail({
                     ariaLabel="Incasso totale prevendite"
                   />
                 </div>
-                <div>
-                  <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                <div className="min-w-0">
+                  <span className="block text-[11px] mb-1 truncate" style={{ color: 'var(--ink-secondary)' }}>
                     1-to-1 (€)
                   </span>
                   <NumericCellInput
@@ -1402,29 +1402,29 @@ export function EventDetail({
                     className="grid grid-cols-3 gap-2 rounded-[10px] p-2.5 text-center tabular-nums"
                     style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
                   >
-                    <div>
-                      <span className="block text-[10px]" style={{ color: 'var(--ink-secondary)' }}>
+                    <div className="min-w-0">
+                      <span className="block text-[10px] truncate" style={{ color: 'var(--ink-secondary)' }}>
                         N° Preve
                       </span>
-                      <span className="text-[15px] font-bold">{formatInt(qty)}</span>
+                      <span className="block text-[14px] sm:text-[15px] font-bold truncate">{formatInt(qty)}</span>
                     </div>
-                    <div>
-                      <span className="block text-[10px]" style={{ color: 'var(--ink-secondary)' }}>
+                    <div className="min-w-0">
+                      <span className="block text-[10px] truncate" style={{ color: 'var(--ink-secondary)' }}>
                         Incasso
                       </span>
-                      <span className="text-[15px] font-bold">{formatEur(rev)}</span>
+                      <span className="block text-[14px] sm:text-[15px] font-bold truncate">{formatEur(rev)}</span>
                     </div>
-                    <div>
-                      <span className="block text-[10px]" style={{ color: 'var(--ink-secondary)' }}>
+                    <div className="min-w-0">
+                      <span className="block text-[10px] truncate" style={{ color: 'var(--ink-secondary)' }}>
                         One to One
                       </span>
-                      <span className="text-[15px] font-bold">{formatEur(oto)}</span>
+                      <span className="block text-[14px] sm:text-[15px] font-bold truncate">{formatEur(oto)}</span>
                     </div>
                   </div>
                 ) : (
                   <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                    <div className="min-w-0">
+                      <span className="block text-[11px] mb-1 truncate" style={{ color: 'var(--ink-secondary)' }}>
                         N° Preve
                       </span>
                       <NumericCellInput
@@ -1438,8 +1438,8 @@ export function EventDetail({
                         ariaLabel={`Prevendite ${meta.display_name}`}
                       />
                     </div>
-                    <div>
-                      <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                    <div className="min-w-0">
+                      <span className="block text-[11px] mb-1 truncate" style={{ color: 'var(--ink-secondary)' }}>
                         Incasso (€)
                       </span>
                       <NumericCellInput
@@ -1452,8 +1452,8 @@ export function EventDetail({
                         ariaLabel={`Incasso ${meta.display_name}`}
                       />
                     </div>
-                    <div>
-                      <span className="block text-[11px] mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                    <div className="min-w-0">
+                      <span className="block text-[11px] mb-1 truncate" style={{ color: 'var(--ink-secondary)' }}>
                         1-to-1 (€)
                       </span>
                       <NumericCellInput
@@ -2148,7 +2148,7 @@ export function EventDetail({
                   </div>
 
                   {/* Primary Fast Row: Stepper Paganti + Prezzo € + Scarico Pill */}
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <AppleStepper
                         size="sm"
@@ -2589,7 +2589,7 @@ export function EventDetail({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label
                 htmlFor="edit-ev-venue"
@@ -2688,7 +2688,11 @@ export function EventDetail({
         open={showImportModal}
         onClose={() => setShowImportModal(false)}
         title="Importa report prevendite"
-        subtitle="Incolla righe da TicketSMS, Excel o Google Sheets (con colonne Promoter, Quantità, Incasso, One to One)."
+        subtitle={
+          ownerPromoterId === 'lollo'
+            ? 'Incolla righe da TicketSMS, Excel o Google Sheets (con colonne Promoter, Quantità, Incasso, One to One).'
+            : 'Incolla righe da Excel o Google Sheets (con colonne Promoter, Quantità, Incasso, One to One).'
+        }
         maxWidth="max-w-[560px]"
       >
         <div className="space-y-4">
@@ -2697,7 +2701,7 @@ export function EventDetail({
             value={importText}
             onChange={(e) => setImportText(e.target.value)}
             placeholder="Es.&#10;Lorenzo Biondi	73	1354,50	1295,00&#10;Francesco Troiano	68	1120,00	1120,00"
-            className="apple-input w-full rounded-[12px] p-3 text-[14px] font-mono"
+            className="apple-input w-full rounded-[12px] p-3 text-[16px] md:text-[14px] font-mono"
           />
 
           {handleImportPreview.length > 0 && (

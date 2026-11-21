@@ -105,7 +105,7 @@ function TierListEditor({
           {tiers.map((tier, idx) => (
             <div
               key={idx}
-              className="grid grid-cols-[64px_1fr_1fr_34px] items-center gap-2 rounded-[10px] p-2"
+              className="grid grid-cols-[56px_minmax(0,1fr)_minmax(0,1fr)_32px] items-center gap-2 rounded-[10px] p-2"
               style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
             >
               <select
@@ -614,7 +614,7 @@ export function StaffWorkspace({
     <div className="min-h-[calc(100dvh-56px)] lg:min-h-dvh flex flex-col">
       {/* Top Personal Staff Sub-Navigation Bar */}
       <div
-        className="sticky top-[52px] lg:top-0 z-20 apple-chrome px-4 lg:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2.5"
+        className="sticky top-[calc(52px+env(safe-area-inset-top))] lg:top-0 z-20 apple-chrome px-4 lg:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2.5"
         style={{ borderBottom: '0.5px solid var(--separator)' }}
       >
         <div className="flex items-center gap-2.5 min-w-0">
@@ -657,6 +657,7 @@ export function StaffWorkspace({
         <SegmentedControl
           ariaLabel="Sezioni staff"
           size="sm"
+          className="w-full sm:w-auto"
           value={section}
           onChange={(v) => {
             if (v === 'events' && section === 'events' && selectedEventId) {
@@ -973,12 +974,12 @@ export function StaffWorkspace({
         <div className="max-w-[1060px] w-full mx-auto px-4 sm:px-6 pt-5 pb-28 lg:pb-12 space-y-5">
           {/* Hero KPI Strip */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div className="apple-card p-4">
-              <div className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+            <div className="apple-card p-3.5 sm:p-4 min-w-0">
+              <div className="text-[12px] font-medium truncate" style={{ color: 'var(--ink-secondary)' }}>
                 Mancanti Staff
               </div>
               <div
-                className="mt-1 text-[24px] sm:text-[26px] font-bold tracking-tight tabular-nums"
+                className="mt-1 text-[20px] sm:text-[26px] font-bold tracking-tight tabular-nums truncate"
                 style={{
                   color:
                     crossEventAnalytics.totalMancanti > 0.01
@@ -995,12 +996,12 @@ export function StaffWorkspace({
               </div>
             </div>
 
-            <div className="apple-card p-4">
-              <div className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+            <div className="apple-card p-3.5 sm:p-4 min-w-0">
+              <div className="text-[12px] font-medium truncate" style={{ color: 'var(--ink-secondary)' }}>
                 Buste da pagare
               </div>
               <div
-                className="mt-1 text-[24px] sm:text-[26px] font-bold tracking-tight tabular-nums"
+                className="mt-1 text-[20px] sm:text-[26px] font-bold tracking-tight tabular-nums truncate"
                 style={{
                   color:
                     crossEventAnalytics.totalBustaUnpaid > 0.01
@@ -1017,12 +1018,12 @@ export function StaffWorkspace({
               </div>
             </div>
 
-            <div className="apple-card p-4">
-              <div className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+            <div className="apple-card p-3.5 sm:p-4 min-w-0">
+              <div className="text-[12px] font-medium truncate" style={{ color: 'var(--ink-secondary)' }}>
                 Buste già pagate
               </div>
               <div
-                className="mt-1 text-[24px] sm:text-[26px] font-bold tracking-tight tabular-nums"
+                className="mt-1 text-[20px] sm:text-[26px] font-bold tracking-tight tabular-nums truncate"
                 style={{ color: 'var(--status-green)' }}
               >
                 {formatEur(crossEventAnalytics.totalBustaPaid, true)}
@@ -1032,18 +1033,18 @@ export function StaffWorkspace({
               </div>
             </div>
 
-            <div className="apple-card p-4">
-              <div className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+            <div className="apple-card p-3.5 sm:p-4 min-w-0">
+              <div className="text-[12px] font-medium truncate" style={{ color: 'var(--ink-secondary)' }}>
                 Volume Staff totale
               </div>
-              <div className="mt-1 text-[24px] sm:text-[26px] font-bold tracking-tight tabular-nums">
+              <div className="mt-1 text-[20px] sm:text-[26px] font-bold tracking-tight tabular-nums truncate">
                 {formatInt(crossEventAnalytics.totalPx)}{' '}
                 <span className="text-[14px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
                   px
                 </span>
               </div>
               <div
-                className="mt-1 text-[12px] tabular-nums"
+                className="mt-1 text-[12px] tabular-nums truncate"
                 style={{ color: 'var(--ink-tertiary)' }}
               >
                 Fatt. {formatEur(crossEventAnalytics.totalFatturato)}
@@ -1053,7 +1054,7 @@ export function StaffWorkspace({
 
           {/* Controls */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
               <SegmentedControl
                 ariaLabel="Raggruppamento saldi"
                 size="sm"
@@ -1065,7 +1066,7 @@ export function StaffWorkspace({
                 ]}
               />
 
-              <div className="flex items-center gap-1.5 overflow-x-auto">
+              <div className="flex items-center gap-1.5 overflow-x-auto max-w-full">
                 {(
                   [
                     { id: 'OPEN', label: 'Con pendenze' },
@@ -2014,14 +2015,18 @@ export function StaffWorkspace({
         open={memberModalOpen}
         onClose={() => setMemberModalOpen(false)}
         title={editingMemberId ? 'Modifica sotto-PR' : 'Nuovo sotto-PR'}
-        subtitle="Configura nome, soprannome, alias per TicketSMS e busta personale."
+        subtitle={
+          ownerPromoterId === 'lollo'
+            ? 'Configura nome, soprannome, alias per TicketSMS e busta personale.'
+            : 'Configura nome, soprannome, alias e busta personale.'
+        }
         maxWidth="max-w-[540px]"
       >
         <form onSubmit={handleSaveMember} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-[12px] font-medium mb-1" style={{ color: 'var(--ink-secondary)' }}>
-                Nome completo (come su TicketSMS)
+                {ownerPromoterId === 'lollo' ? 'Nome completo (come su TicketSMS)' : 'Nome completo'}
               </label>
               <input
                 type="text"
@@ -2049,7 +2054,9 @@ export function StaffWorkspace({
 
           <div>
             <label className="block text-[12px] font-medium mb-1" style={{ color: 'var(--ink-secondary)' }}>
-              Alias separati da virgola (per collegare automaticamente tavoli e TicketSMS)
+              {ownerPromoterId === 'lollo'
+                ? 'Alias separati da virgola (per collegare automaticamente tavoli e TicketSMS)'
+                : 'Alias separati da virgola (per collegare automaticamente tavoli e import CSV)'}
             </label>
             <input
               type="text"

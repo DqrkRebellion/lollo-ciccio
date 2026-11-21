@@ -115,7 +115,7 @@ export function AppShell({
           : '#FF3B30';
 
   return (
-    <div className="min-h-dvh flex flex-col lg:flex-row">
+    <div className="min-h-dvh w-full max-w-full overflow-x-clip flex flex-col lg:flex-row">
       {/* Desktop macOS Translucent Sidebar */}
       <aside
         className="hidden lg:flex lg:w-[236px] shrink-0 flex-col justify-between h-dvh sticky top-0 apple-sidebar select-none"
@@ -284,91 +284,93 @@ export function AppShell({
 
       {/* Mobile Translucent Top Header */}
       <header
-        className="lg:hidden sticky top-0 z-30 apple-chrome flex items-center justify-between gap-2 px-4 h-[52px]"
+        className="lg:hidden sticky top-0 z-30 apple-chrome w-full max-w-full"
         style={{
           borderBottom: '0.5px solid var(--separator)',
           paddingTop: 'env(safe-area-inset-top)',
         }}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          <span
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[11px] font-bold text-white"
-            style={{ background: 'linear-gradient(135deg, #0071E3 0%, #5856D6 100%)' }}
-          >
-            LC
-          </span>
-          <span className="text-[15px] font-bold tracking-tight truncate">{teamName}</span>
-          <span
-            className="h-1.5 w-1.5 rounded-full shrink-0"
-            style={{ backgroundColor: syncDotColor }}
-            title={syncLabel}
-          />
-        </div>
+        <div className="flex items-center justify-between gap-2 px-4 h-[52px]">
+          <div className="flex items-center gap-2 min-w-0">
+            <span
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[11px] font-bold text-white"
+              style={{ background: 'linear-gradient(135deg, #0071E3 0%, #5856D6 100%)' }}
+            >
+              LC
+            </span>
+            <span className="text-[15px] font-bold tracking-tight truncate">{teamName}</span>
+            <span
+              className="h-1.5 w-1.5 rounded-full shrink-0"
+              style={{ backgroundColor: syncDotColor }}
+              title={syncLabel}
+            />
+          </div>
 
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            disabled={!canUndo}
-            onClick={() => onUndo()}
-            aria-label={lastUndoLabel ? `Annulla: ${lastUndoLabel}` : 'Annulla ultima modifica'}
-            title={lastUndoLabel ? `Annulla: ${lastUndoLabel}` : 'Annulla'}
-            className="relative flex h-8 items-center justify-center gap-1 rounded-full px-2.5 text-[12px] font-semibold apple-press cursor-pointer disabled:opacity-30"
-            style={{
-              backgroundColor: canUndo ? 'var(--accent-subtle)' : 'var(--bg-surface-secondary)',
-              color: canUndo ? 'var(--accent)' : 'var(--ink-secondary)',
-            }}
-          >
-            <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />
-            {canUndo && <span className="tabular-nums">{undoCount}</span>}
-          </button>
-          <button
-            type="button"
-            onClick={onOpenSearch}
-            aria-label="Cerca serate"
-            className="flex h-8 w-8 items-center justify-center rounded-full apple-press cursor-pointer"
-            style={{ backgroundColor: 'var(--bg-surface-secondary)', color: 'var(--ink-primary)' }}
-          >
-            <Search className="h-4 w-4" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={onToggleTheme}
-            aria-label={isDark ? 'Passa a tema chiaro' : 'Passa a tema scuro'}
-            className="flex h-8 w-8 items-center justify-center rounded-full apple-press cursor-pointer"
-            style={{ backgroundColor: 'var(--bg-surface-secondary)', color: 'var(--ink-primary)' }}
-          >
-            {isDark ? (
-              <Sun className="h-4 w-4" aria-hidden="true" />
-            ) : (
-              <Moon className="h-4 w-4" aria-hidden="true" />
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectTab('settings')}
-            aria-label="Impostazioni e profilo"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-bold text-white apple-press cursor-pointer"
-            style={{
-              backgroundColor: userColor,
-              boxShadow: activeTab === 'settings' ? '0 0 0 2px var(--bg-surface), 0 0 0 4px var(--accent)' : 'none',
-            }}
-          >
-            {userDisplayName.slice(0, 2).toUpperCase()}
-          </button>
-          <button
-            type="button"
-            onClick={onOpenNewEvent}
-            aria-label="Nuova serata"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-white apple-press cursor-pointer"
-            style={{ backgroundColor: 'var(--accent)' }}
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              disabled={!canUndo}
+              onClick={() => onUndo()}
+              aria-label={lastUndoLabel ? `Annulla: ${lastUndoLabel}` : 'Annulla ultima modifica'}
+              title={lastUndoLabel ? `Annulla: ${lastUndoLabel}` : 'Annulla'}
+              className="relative flex h-8 items-center justify-center gap-1 rounded-full px-2.5 text-[12px] font-semibold apple-press cursor-pointer disabled:opacity-30"
+              style={{
+                backgroundColor: canUndo ? 'var(--accent-subtle)' : 'var(--bg-surface-secondary)',
+                color: canUndo ? 'var(--accent)' : 'var(--ink-secondary)',
+              }}
+            >
+              <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />
+              {canUndo && <span className="tabular-nums">{undoCount}</span>}
+            </button>
+            <button
+              type="button"
+              onClick={onOpenSearch}
+              aria-label="Cerca serate"
+              className="flex h-8 w-8 items-center justify-center rounded-full apple-press cursor-pointer"
+              style={{ backgroundColor: 'var(--bg-surface-secondary)', color: 'var(--ink-primary)' }}
+            >
+              <Search className="h-4 w-4" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              aria-label={isDark ? 'Passa a tema chiaro' : 'Passa a tema scuro'}
+              className="flex h-8 w-8 items-center justify-center rounded-full apple-press cursor-pointer"
+              style={{ backgroundColor: 'var(--bg-surface-secondary)', color: 'var(--ink-primary)' }}
+            >
+              {isDark ? (
+                <Sun className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <Moon className="h-4 w-4" aria-hidden="true" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectTab('settings')}
+              aria-label="Impostazioni e profilo"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-[11px] font-bold text-white apple-press cursor-pointer"
+              style={{
+                backgroundColor: userColor,
+                boxShadow: activeTab === 'settings' ? '0 0 0 2px var(--bg-surface), 0 0 0 4px var(--accent)' : 'none',
+              }}
+            >
+              {userDisplayName.slice(0, 2).toUpperCase()}
+            </button>
+            <button
+              type="button"
+              onClick={onOpenNewEvent}
+              aria-label="Nuova serata"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-white apple-press cursor-pointer"
+              style={{ backgroundColor: 'var(--accent)' }}
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
         </div>
       </header>
 
       {/* Main Content Area */}
-      <main id="main-content" className="flex-1 min-w-0">
+      <main id="main-content" className="flex-1 min-w-0 w-full max-w-full">
         {children}
       </main>
 

@@ -659,6 +659,7 @@ export function DashboardView({
           <SegmentedControl<PeriodPreset>
             ariaLabel="Periodo"
             size="sm"
+            className="w-full sm:w-auto"
             value={period === 'CUSTOM' ? 'CUSTOM' : period}
             onChange={(p) => {
               if (p === 'CUSTOM') {
@@ -752,11 +753,11 @@ export function DashboardView({
       {/* Unified Overview Strip */}
       <section className="apple-surface rounded-[18px] overflow-hidden">
         <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 divide-x divide-[var(--separator)]">
-          <div className="p-4 sm:p-5">
-            <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+          <div className="p-3.5 sm:p-5 min-w-0">
+            <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Fatturato generato
             </span>
-            <div className="mt-1 text-[24px] sm:text-[30px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap">
+            <div className="mt-1 text-[20px] sm:text-[30px] font-bold tracking-tight tabular-nums leading-none truncate">
               {formatEur(stats.revTotal)}
             </div>
             <div className="mt-2 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
@@ -764,13 +765,13 @@ export function DashboardView({
             </div>
           </div>
 
-          <div className="p-4 sm:p-5">
-            <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+          <div className="p-3.5 sm:p-5 min-w-0">
+            <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Ingressi totali
             </span>
-            <div className="mt-1 text-[24px] sm:text-[30px] font-bold tracking-tight tabular-nums leading-none">
+            <div className="mt-1 text-[20px] sm:text-[30px] font-bold tracking-tight tabular-nums leading-none">
               {formatInt(stats.pxTotal)}
-              <span className="ml-1 text-[14px] font-medium" style={{ color: 'var(--ink-tertiary)' }}>
+              <span className="ml-1 text-[13px] sm:text-[14px] font-medium" style={{ color: 'var(--ink-tertiary)' }}>
                 px
               </span>
             </div>
@@ -779,12 +780,12 @@ export function DashboardView({
             </div>
           </div>
 
-          <div className="p-4 sm:p-5">
-            <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+          <div className="p-3.5 sm:p-5 min-w-0">
+            <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Buste maturate
             </span>
             <div
-              className="mt-1 text-[24px] sm:text-[30px] font-bold tracking-tight tabular-nums leading-none whitespace-nowrap"
+              className="mt-1 text-[20px] sm:text-[30px] font-bold tracking-tight tabular-nums leading-none truncate"
               style={{ color: 'var(--status-green)' }}
             >
               {formatEur(stats.bustaTotal)}
@@ -794,13 +795,13 @@ export function DashboardView({
             </div>
           </div>
 
-          <div className="p-4 sm:p-5">
-            <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+          <div className="p-3.5 sm:p-5 min-w-0">
+            <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Mix Prevendite / Tavoli
             </span>
-            <div className="mt-1 text-[24px] sm:text-[30px] font-bold tracking-tight tabular-nums leading-none">
+            <div className="mt-1 text-[20px] sm:text-[30px] font-bold tracking-tight tabular-nums leading-none">
               {formatPercent(stats.revTotal > 0 ? stats.revTables / stats.revTotal : 0)}
-              <span className="ml-1.5 text-[13px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+              <span className="ml-1.5 text-[12px] sm:text-[13px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
                 tavoli
               </span>
             </div>
@@ -1207,10 +1208,55 @@ export function DashboardView({
         </section>
       </div>
 
-      {/* Venue Full Leaderboard Table */}
+      {/* Venue Full Leaderboard (Zero-scroll stacked cards on mobile, table on md+) */}
       <section>
         <h2 className="text-[18px] font-semibold mb-2.5 px-1">Rendimento per locale</h2>
-        <div className="apple-surface rounded-[16px] overflow-x-auto">
+
+        {/* Mobile Stacked Cards */}
+        <div className="md:hidden space-y-2">
+          {stats.venueLeaderboard.map((v) => (
+            <button
+              key={v.name}
+              type="button"
+              onClick={() => toggleVenue(v.name)}
+              className="apple-surface w-full rounded-[14px] px-4 py-3 text-left apple-press cursor-pointer"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    className="h-2.5 w-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: v.color }}
+                  />
+                  <span className="text-[15px] font-semibold truncate">{v.name}</span>
+                  <span className="text-[12px] shrink-0" style={{ color: 'var(--ink-tertiary)' }}>
+                    · {v.events} ser.
+                  </span>
+                </div>
+                <span
+                  className="text-[15px] font-bold tabular-nums shrink-0"
+                  style={{ color: 'var(--status-green)' }}
+                >
+                  {formatEur(v.busta, true)}
+                </span>
+              </div>
+              <div
+                className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 text-[12px] tabular-nums"
+                style={{ color: 'var(--ink-secondary)' }}
+              >
+                <span>
+                  {formatInt(v.px)} px · {v.tables} tavoli
+                </span>
+                <span>
+                  Fatt. <strong style={{ color: 'var(--ink-primary)' }}>{formatEur(v.revenue)}</strong>{' '}
+                  (media {formatEur(v.revenue / (v.events || 1))})
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {/* Desktop Table */}
+        <div className="hidden md:block apple-surface rounded-[16px] overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[540px]">
             <thead>
               <tr
@@ -1426,7 +1472,7 @@ export function DashboardView({
           {/* 2. Date Range & Seasons */}
           <div className="space-y-2.5">
             <span className="block text-[13px] font-semibold">Intervallo date personalizzato</span>
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
                 <label
                   htmlFor="dash-from"
@@ -1443,7 +1489,7 @@ export function DashboardView({
                     setPeriod('CUSTOM');
                     setDateFrom(e.target.value);
                   }}
-                  className="apple-input w-full rounded-[10px] px-3 py-2 text-[15px] tabular-nums"
+                  className="apple-input w-full rounded-[10px] px-3 py-2 text-[16px] md:text-[15px] tabular-nums"
                 />
               </div>
               <div>
@@ -1462,7 +1508,7 @@ export function DashboardView({
                     setPeriod('CUSTOM');
                     setDateTo(e.target.value);
                   }}
-                  className="apple-input w-full rounded-[10px] px-3 py-2 text-[15px] tabular-nums"
+                  className="apple-input w-full rounded-[10px] px-3 py-2 text-[16px] md:text-[15px] tabular-nums"
                 />
               </div>
             </div>
@@ -1601,7 +1647,7 @@ export function DashboardView({
                 id="dash-min-rev"
                 value={minRevenue}
                 onChange={(e) => setMinRevenue(Number(e.target.value))}
-                className="apple-input w-full rounded-[10px] px-3 py-2 text-[14px]"
+                className="apple-input w-full rounded-[10px] px-3 py-2 text-[16px] md:text-[14px]"
               >
                 <option value={0}>Qualsiasi importo</option>
                 <option value={1000}>Almeno 1.000 €</option>

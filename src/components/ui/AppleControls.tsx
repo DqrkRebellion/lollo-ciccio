@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Minus, Plus, X } from 'lucide-react';
 
@@ -37,7 +38,7 @@ export function SegmentedControl<T extends string>({
     <div
       role="radiogroup"
       aria-label={ariaLabel}
-      className={`inline-flex items-center rounded-[10px] p-[3px] select-none ${className}`}
+      className={`inline-flex max-w-full items-center rounded-[10px] p-[3px] select-none overflow-x-auto ${className}`}
       style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
     >
       {options.map((opt) => {
@@ -49,8 +50,8 @@ export function SegmentedControl<T extends string>({
             role="radio"
             aria-checked={active}
             onClick={() => onChange(opt.value)}
-            className={`relative flex-1 rounded-[7px] font-medium transition-colors apple-press cursor-pointer whitespace-nowrap ${
-              size === 'sm' ? 'px-2.5 py-1 text-[12px]' : 'px-3.5 py-1.5 text-[13px]'
+            className={`relative flex-1 min-w-0 rounded-[7px] font-medium transition-colors apple-press cursor-pointer whitespace-nowrap ${
+              size === 'sm' ? 'px-2 sm:px-2.5 py-1 text-[12px]' : 'px-2.5 sm:px-3.5 py-1.5 text-[12.5px] sm:text-[13px]'
             }`}
             style={{
               color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
@@ -317,14 +318,28 @@ export function AppleModal({
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+
+    // Lock background scroll and keep horizontal viewport anchored at x=0 (prevents iOS Safari left-shift!)
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      if (window.scrollX !== 0) {
+        window.scrollTo({ left: 0, top: window.scrollY });
+      }
+    };
   }, [open, onClose]);
 
-  return (
+  const modalContent = (
     <AnimatePresence>
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-x-hidden"
           role="dialog"
           aria-modal="true"
           aria-label={title}
@@ -342,14 +357,21 @@ export function AppleModal({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 18, scale: 0.98 }}
             transition={APPLE_SPRING}
-            className={`relative z-10 w-full ${maxWidth} max-h-[90dvh] flex flex-col rounded-t-[22px] sm:rounded-[20px] overflow-hidden overscroll-contain`}
+            className={`relative z-10 w-full max-w-full ${maxWidth} max-h-[88dvh] flex flex-col rounded-t-[22px] sm:rounded-[20px] overflow-hidden overscroll-contain`}
             style={{
               backgroundColor: 'var(--bg-surface)',
               boxShadow: 'var(--shadow-floating)',
             }}
           >
+            {/* Mobile iOS Sheet Grabber */}
+            <div className="sm:hidden flex justify-center pt-2.5 pb-0.5 shrink-0">
+              <span
+                className="h-1 w-9 rounded-full"
+                style={{ backgroundColor: 'var(--separator-strong)' }}
+              />
+            </div>
             <div
-              className="flex items-start justify-between gap-3 px-5 pt-5 pb-3.5 shrink-0"
+              className="flex items-start justify-between gap-3 px-4 sm:px-5 pt-3 sm:pt-5 pb-3.5 shrink-0"
               style={{ borderBottom: '0.5px solid var(--separator)' }}
             >
               <div className="min-w-0">
@@ -373,7 +395,7 @@ export function AppleModal({
                 <X className="h-4 w-4" aria-hidden="true" />
               </button>
             </div>
-            <div className="overflow-y-auto px-5 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+            <div className="overflow-y-auto overflow-x-hidden px-4 sm:px-5 py-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
               {children}
             </div>
           </motion.div>
@@ -381,6 +403,9 @@ export function AppleModal({
       )}
     </AnimatePresence>
   );
+
+  if (typeof document === 'undefined') return modalContent;
+  return createPortal(modalContent, document.body);
 }
 
 /**
