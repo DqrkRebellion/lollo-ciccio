@@ -115,7 +115,7 @@ export function AppShell({
           : '#FF3B30';
 
   return (
-    <div className="min-h-dvh w-full max-w-full overflow-x-clip flex flex-col lg:flex-row">
+    <div className="min-h-svh w-full max-w-full flex flex-col lg:flex-row">
       {/* Desktop macOS Translucent Sidebar */}
       <aside
         className="hidden lg:flex lg:w-[236px] shrink-0 flex-col justify-between h-dvh sticky top-0 apple-sidebar select-none"

@@ -107,19 +107,17 @@
 
   body {
     margin: 0;
-    min-height: 100dvh;
+    min-height: 100svh;
     width: 100%;
     max-width: 100%;
     background-color: var(--bg-canvas);
     color: var(--ink-primary);
-    overflow-x: clip;
     overscroll-behavior-x: none;
   }
 
   #root {
     width: 100%;
     max-width: 100%;
-    overflow-x: clip;
   }
 
   /* Optical typography sizing */
@@ -177,12 +175,18 @@
   background-color: var(--bg-chrome);
   backdrop-filter: blur(22px) saturate(180%);
   -webkit-backdrop-filter: blur(22px) saturate(180%);
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  isolation: isolate;
 }
 
 .apple-sidebar {
   background-color: var(--bg-sidebar);
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  isolation: isolate;
 }
 
 .apple-press {
