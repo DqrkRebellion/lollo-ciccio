@@ -255,14 +255,14 @@ export function EventWorkspace({
 
         <div className="mt-1.5 flex items-center justify-between gap-2 text-[12px] tabular-nums">
           <div
-            className="min-w-0 flex items-center gap-1.5 truncate"
+            className="min-w-0 flex items-center gap-1.5 overflow-hidden whitespace-nowrap"
             style={{ color: 'var(--ink-secondary)' }}
           >
-            <span>{formatDateDayMonth(ev.event_date)}</span>
-            <span>·</span>
+            <span className="shrink-0">{formatDateDayMonth(ev.event_date)}</span>
+            <span className="shrink-0">·</span>
             <span className="truncate">{ev.venue_name}</span>
-            <span>·</span>
-            <span>{formatInt(s?.pxTotal ?? 0)} px</span>
+            <span className="shrink-0">·</span>
+            <span className="shrink-0">{formatInt(s?.pxTotal ?? 0)} px</span>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -359,7 +359,7 @@ export function EventWorkspace({
             aria-label="Filtra per locale"
             value={venueFilter}
             onChange={(e) => setVenueFilter(e.target.value)}
-            className="apple-input rounded-[9px] px-3 py-1.5 text-[16px] md:text-[13px] font-medium cursor-pointer"
+            className="apple-input apple-select rounded-[9px] pl-3 pr-8 py-1.5 min-h-[36px] md:min-h-[34px] text-[16px] md:text-[13px] font-medium cursor-pointer"
           >
             <option value="ALL">Tutti i locali</option>
             {uniqueVenueNames.map((v) => (
@@ -371,10 +371,11 @@ export function EventWorkspace({
 
           <button
             type="button"
+            aria-pressed={statusFilter === 'OPEN_MANCANTI'}
             onClick={() =>
               setStatusFilter((s) => (s === 'OPEN_MANCANTI' ? 'ALL' : 'OPEN_MANCANTI'))
             }
-            className="rounded-[9px] px-3 py-1.5 text-[13px] font-medium apple-press cursor-pointer transition-colors"
+            className="inline-flex items-center rounded-[9px] px-3 py-1.5 min-h-[36px] md:min-h-[34px] text-[13px] font-medium whitespace-nowrap apple-press cursor-pointer transition-colors"
             style={{
               backgroundColor:
                 statusFilter === 'OPEN_MANCANTI'
@@ -389,10 +390,11 @@ export function EventWorkspace({
 
           <button
             type="button"
+            aria-pressed={statusFilter === 'UNPAID_BUSTA'}
             onClick={() =>
               setStatusFilter((s) => (s === 'UNPAID_BUSTA' ? 'ALL' : 'UNPAID_BUSTA'))
             }
-            className="rounded-[9px] px-3 py-1.5 text-[13px] font-medium apple-press cursor-pointer transition-colors"
+            className="inline-flex items-center rounded-[9px] px-3 py-1.5 min-h-[36px] md:min-h-[34px] text-[13px] font-medium whitespace-nowrap apple-press cursor-pointer transition-colors"
             style={{
               backgroundColor:
                 statusFilter === 'UNPAID_BUSTA'
@@ -419,6 +421,23 @@ export function EventWorkspace({
           <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-secondary)' }}>
             Modifica i filtri o crea una nuova serata.
           </p>
+          {(search.trim() !== '' || venueFilter !== 'ALL' || statusFilter !== 'ALL') && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('');
+                setVenueFilter('ALL');
+                setStatusFilter('ALL');
+              }}
+              className="mt-3 inline-flex items-center rounded-[10px] px-3.5 py-2 text-[13px] font-semibold apple-press cursor-pointer"
+              style={{
+                backgroundColor: 'var(--accent-subtle)',
+                color: 'var(--accent)',
+              }}
+            >
+              Resetta filtri
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-6">

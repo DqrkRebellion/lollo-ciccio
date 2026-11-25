@@ -639,25 +639,28 @@ export function EventDetail({
 
       {/* 1. Unified Financial Overview Strip */}
       <section className="apple-surface rounded-[18px] overflow-hidden mb-6">
-        <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 divide-x divide-[var(--separator)]">
+        <div
+          className="grid grid-cols-2 lg:grid-cols-4 gap-px"
+          style={{ backgroundColor: 'var(--separator)' }}
+        >
           {/* Ingressi */}
-          <div className="p-3.5 sm:p-5 min-w-0">
+          <div className="p-3.5 sm:p-5 min-w-0" style={{ backgroundColor: 'var(--bg-surface)' }}>
             <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Ingressi
             </span>
-            <div className="mt-1 text-[20px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none">
+            <div className="mt-1 text-[20px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none truncate">
               {formatInt(summary.pxTotal)}
               <span className="ml-1 text-[13px] font-medium" style={{ color: 'var(--ink-tertiary)' }}>
                 px
               </span>
             </div>
-            <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+            <div className="mt-1.5 text-[12px] tabular-nums truncate" style={{ color: 'var(--ink-secondary)' }}>
               {formatInt(summary.pxPresales)} preve · {formatInt(summary.pxTables)} tavoli
             </div>
           </div>
 
           {/* Fatturato */}
-          <div className="p-3.5 sm:p-5 min-w-0">
+          <div className="p-3.5 sm:p-5 min-w-0" style={{ backgroundColor: 'var(--bg-surface)' }}>
             <span className="text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Fatturato
             </span>
@@ -670,7 +673,7 @@ export function EventDetail({
           </div>
 
           {/* Busta serata */}
-          <div className="p-3.5 sm:p-5 min-w-0">
+          <div className="p-3.5 sm:p-5 min-w-0" style={{ backgroundColor: 'var(--bg-surface)' }}>
             <div className="flex items-center justify-between gap-1.5">
               <span className="text-[12px] font-medium truncate" style={{ color: 'var(--ink-secondary)' }}>
                 {eventIsActive ? 'Busta (provv.)' : 'Busta serata'}
@@ -714,7 +717,7 @@ export function EventDetail({
           </div>
 
           {/* Mancanti */}
-          <div className="p-3.5 sm:p-5 min-w-0">
+          <div className="p-3.5 sm:p-5 min-w-0" style={{ backgroundColor: 'var(--bg-surface)' }}>
             <div className="flex items-center justify-between gap-1.5">
               <span className="text-[12px] font-medium truncate" style={{ color: 'var(--ink-secondary)' }}>
                 Mancanti
@@ -1334,7 +1337,7 @@ export function EventDetail({
 
           {!isTotalMinusMode && (
             <div
-              className="flex items-center justify-between rounded-[12px] px-4 py-2.5 text-[13px] font-semibold tabular-nums"
+              className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-[12px] px-4 py-2.5 text-[13px] font-semibold tabular-nums"
               style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
             >
               <span>Totale</span>
@@ -1723,7 +1726,7 @@ export function EventDetail({
                           type="button"
                           onClick={() => onDeleteTable(event.id, t.id)}
                           aria-label={`Rimuovi tavolo ${t.table_name}`}
-                          className="p-1.5 rounded-[8px] opacity-40 group-hover:opacity-100 hover:bg-[var(--status-red-bg)] transition-opacity cursor-pointer"
+                          className="p-1.5 rounded-[8px] opacity-40 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-[var(--status-red-bg)] transition-opacity cursor-pointer"
                           style={{ color: 'var(--status-red)' }}
                         >
                           <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1741,7 +1744,7 @@ export function EventDetail({
                     aria-label="PR nuovo tavolo"
                     value={newTablePr}
                     onChange={(e) => setNewTablePr(e.target.value)}
-                    className="apple-input rounded-[8px] px-2 py-1.5 text-[12px] font-semibold w-full"
+                    className="apple-input apple-select rounded-[8px] pl-2.5 pr-7 py-1.5 text-[12px] font-semibold w-full cursor-pointer"
                   >
                     {selectablePrs.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -1912,7 +1915,7 @@ export function EventDetail({
                             onUpdateTable(event.id, t.id, { table_name: v || 'Tavolo' });
                           }
                         }}
-                        className="font-semibold text-[16px] bg-transparent rounded-[6px] px-1 -mx-1 min-w-0 flex-1 truncate"
+                        className="font-semibold text-[16px] bg-transparent rounded-[6px] px-1 -mx-1 min-w-[130px] flex-1 truncate"
                       />
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
@@ -2392,7 +2395,7 @@ export function EventDetail({
                     venue_name: e.target.value,
                   });
                 }}
-                className="apple-input w-full rounded-[10px] px-3 py-2 text-[16px] md:text-[15px]"
+                className="apple-input apple-select w-full rounded-[10px] pl-3 pr-8 py-2 text-[16px] md:text-[15px] cursor-pointer"
               >
                 {venues.map((v) => (
                   <option key={v.id} value={v.name}>
@@ -2414,7 +2417,7 @@ export function EventDetail({
                 type="date"
                 value={event.event_date}
                 onChange={(e) => onUpdateEvent(event.id, { event_date: e.target.value })}
-                className="apple-input w-full rounded-[10px] px-3 py-2 text-[16px] md:text-[15px] tabular-nums"
+                className="apple-input w-full min-h-[42px] rounded-[10px] px-3 py-2 text-[16px] md:text-[15px] tabular-nums"
               />
             </div>
           </div>

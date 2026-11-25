@@ -105,18 +105,23 @@ function TierListEditor({
           {tiers.map((tier, idx) => (
             <div
               key={idx}
-              className="grid grid-cols-[56px_minmax(0,1fr)_minmax(0,1fr)_32px] items-center gap-2 rounded-[10px] p-2"
+              className="grid grid-cols-[44px_minmax(0,1fr)_minmax(0,1fr)_32px] items-end gap-2 rounded-[10px] p-2"
               style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
             >
-              <select
-                aria-label="Operatore soglia"
-                value={tier.inclusive ? 'gte' : 'gt'}
-                onChange={(e) => updateRow(idx, { inclusive: e.target.value === 'gte' })}
-                className="apple-input rounded-[8px] px-2 py-1.5 text-[16px] md:text-[14px] font-semibold cursor-pointer"
+              <button
+                type="button"
+                aria-label={tier.inclusive ? 'Operatore maggiore o uguale (clicca per cambiare)' : 'Operatore maggiore stretto (clicca per cambiare)'}
+                title="Clicca per cambiare tra > e ≥"
+                onClick={() => updateRow(idx, { inclusive: !tier.inclusive })}
+                className="flex h-[38px] md:h-[34px] w-full items-center justify-center rounded-[8px] text-[15px] font-bold apple-press cursor-pointer"
+                style={{
+                  backgroundColor: 'var(--bg-surface)',
+                  color: 'var(--accent)',
+                  boxShadow: 'var(--shadow-card)',
+                }}
               >
-                <option value="gt">&gt;</option>
-                <option value="gte">≥</option>
-              </select>
+                {tier.inclusive ? '≥' : '>'}
+              </button>
 
               <div>
                 <div className="text-[10px] mb-0.5" style={{ color: 'var(--ink-tertiary)' }}>
@@ -690,16 +695,16 @@ export function StaffWorkspace({
 
         <div className="mt-1.5 flex items-center justify-between gap-2 text-[12px] tabular-nums">
           <div
-            className="min-w-0 flex items-center gap-1.5 truncate"
+            className="min-w-0 flex items-center gap-1.5 overflow-hidden whitespace-nowrap"
             style={{ color: 'var(--ink-secondary)' }}
           >
-            <span>{formatDateDayMonth(ev.event_date)}</span>
-            <span>·</span>
+            <span className="shrink-0">{formatDateDayMonth(ev.event_date)}</span>
+            <span className="shrink-0">·</span>
             <span className="truncate">{ev.venue_name}</span>
             {hasData && ss && (
               <>
-                <span>·</span>
-                <span>{ss.membersRollup.length} PR</span>
+                <span className="shrink-0">·</span>
+                <span className="shrink-0">{ss.membersRollup.length} PR</span>
               </>
             )}
           </div>
@@ -902,8 +907,9 @@ export function StaffWorkspace({
                     <button
                       key={f.id}
                       type="button"
+                      aria-pressed={active}
                       onClick={() => setListFilter(f.id)}
-                      className="rounded-[9px] px-3 py-1.5 text-[12px] font-medium shrink-0 apple-press cursor-pointer transition-colors"
+                      className="inline-flex items-center rounded-[9px] px-3 py-1.5 min-h-[34px] text-[12.5px] font-medium whitespace-nowrap shrink-0 apple-press cursor-pointer transition-colors"
                       style={{
                         backgroundColor: active
                           ? f.id === 'OPEN_MANCANTI'
@@ -927,20 +933,23 @@ export function StaffWorkspace({
                     disabled={ticketSmsSyncing}
                     onClick={() => onTriggerTicketSmsSync()}
                     title="Aggiorna manualmente i dati da TicketSMS"
-                    className="inline-flex items-center gap-1.5 rounded-[9px] px-3 py-1.5 text-[12px] font-semibold apple-surface apple-press cursor-pointer disabled:opacity-60"
+                    className="inline-flex items-center gap-1.5 rounded-[9px] px-3 py-1.5 min-h-[34px] text-[12.5px] font-semibold whitespace-nowrap apple-surface apple-press cursor-pointer disabled:opacity-60"
                     style={{ color: 'var(--accent)' }}
                   >
                     <RefreshCw
                       className={`h-3.5 w-3.5 ${ticketSmsSyncing ? 'animate-spin' : ''}`}
                       aria-hidden="true"
                     />
-                    <span>{ticketSmsSyncing ? 'Sync…' : 'Aggiorna TicketSMS'}</span>
+                    <span className="hidden sm:inline">
+                      {ticketSmsSyncing ? 'Sync…' : 'Aggiorna TicketSMS'}
+                    </span>
+                    <span className="sm:hidden">{ticketSmsSyncing ? 'Sync…' : 'TicketSMS'}</span>
                   </button>
                 )}
                 <button
                   type="button"
                   onClick={onOpenNewEvent}
-                  className="inline-flex items-center gap-1 rounded-[9px] px-3 py-1.5 text-[12px] font-semibold text-white apple-press cursor-pointer"
+                  className="inline-flex items-center gap-1 rounded-[9px] px-3 py-1.5 min-h-[34px] text-[12.5px] font-semibold whitespace-nowrap text-white apple-press cursor-pointer"
                   style={{ backgroundColor: 'var(--accent)' }}
                 >
                   <Plus className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1086,6 +1095,7 @@ export function StaffWorkspace({
               <SegmentedControl
                 ariaLabel="Raggruppamento saldi"
                 size="sm"
+                className="w-full sm:w-auto"
                 value={ledgerMode}
                 onChange={setLedgerMode}
                 options={[
@@ -1094,7 +1104,7 @@ export function StaffWorkspace({
                 ]}
               />
 
-              <div className="flex items-center gap-1.5 overflow-x-auto max-w-full">
+              <div className="flex flex-wrap items-center gap-1.5 max-w-full">
                 {(
                   [
                     { id: 'OPEN', label: 'Aperti' },
@@ -1108,8 +1118,9 @@ export function StaffWorkspace({
                     <button
                       key={f.id}
                       type="button"
+                      aria-pressed={active}
                       onClick={() => setLedgerFilter(f.id)}
-                      className="rounded-[8px] px-2.5 py-1.5 text-[12px] font-medium shrink-0 apple-press cursor-pointer transition-colors"
+                      className="inline-flex items-center rounded-[9px] px-3 py-1.5 min-h-[34px] text-[12.5px] font-medium whitespace-nowrap shrink-0 apple-press cursor-pointer transition-colors"
                       style={{
                         backgroundColor: active
                           ? 'var(--accent-subtle)'
@@ -1134,9 +1145,21 @@ export function StaffWorkspace({
                 type="text"
                 value={ledgerSearch}
                 onChange={(e) => setLedgerSearch(e.target.value)}
+                aria-label={ledgerMode === 'by_pr' ? 'Cerca sotto-PR nei saldi' : 'Cerca serata nei saldi'}
                 placeholder={ledgerMode === 'by_pr' ? 'Cerca sotto-PR…' : 'Cerca serata…'}
-                className="apple-input w-full rounded-[10px] pl-9 pr-3 py-1.5 text-[16px] md:text-[13px]"
+                className="apple-input w-full rounded-[10px] pl-9 pr-8 py-1.5 text-[16px] md:text-[13px]"
               />
+              {ledgerSearch && (
+                <button
+                  type="button"
+                  onClick={() => setLedgerSearch('')}
+                  aria-label="Svuota ricerca saldi"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 cursor-pointer"
+                  style={{ color: 'var(--ink-tertiary)' }}
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -1807,7 +1830,7 @@ export function StaffWorkspace({
             </div>
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {(
                   [
                     { id: 'ACTIVE', label: 'Attivi' },
@@ -1818,8 +1841,9 @@ export function StaffWorkspace({
                   <button
                     key={f.id}
                     type="button"
+                    aria-pressed={memberFilter === f.id}
                     onClick={() => setMemberFilter(f.id)}
-                    className="rounded-[8px] px-2.5 py-1 text-[12px] font-medium apple-press cursor-pointer transition-colors"
+                    className="inline-flex items-center rounded-[9px] px-3 py-1.5 min-h-[34px] text-[12.5px] font-medium whitespace-nowrap apple-press cursor-pointer transition-colors"
                     style={{
                       backgroundColor:
                         memberFilter === f.id
@@ -1843,9 +1867,21 @@ export function StaffWorkspace({
                   type="text"
                   value={memberSearch}
                   onChange={(e) => setMemberSearch(e.target.value)}
+                  aria-label="Cerca sotto-PR nello staff"
                   placeholder="Cerca nome o soprannome…"
-                  className="apple-input w-full rounded-[10px] pl-9 pr-3 py-1.5 text-[16px] md:text-[13px]"
+                  className="apple-input w-full rounded-[10px] pl-9 pr-8 py-1.5 text-[16px] md:text-[13px]"
                 />
+                {memberSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setMemberSearch('')}
+                    aria-label="Svuota ricerca sotto-PR"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 cursor-pointer"
+                    style={{ color: 'var(--ink-tertiary)' }}
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1937,7 +1973,7 @@ export function StaffWorkspace({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 pl-9 sm:pl-0 shrink-0">
+                    <div className="flex items-center gap-2 pl-9 sm:pl-0 w-full sm:w-auto shrink-0">
                       {!member.is_self && (
                         <select
                           aria-label={`Piano busta per ${member.full_name}`}
@@ -1955,7 +1991,7 @@ export function StaffWorkspace({
                               custom_table_tiers: null,
                             });
                           }}
-                          className="apple-input rounded-[8px] px-2.5 py-1.5 text-[16px] md:text-[12px] font-medium cursor-pointer max-w-[165px]"
+                          className="apple-input apple-select rounded-[8px] pl-2.5 pr-8 py-1.5 text-[16px] md:text-[12px] font-medium cursor-pointer min-w-0 flex-1 sm:flex-initial sm:max-w-[180px]"
                         >
                           {hasCustomTiers && <option value="__CUSTOM__">Personalizzato</option>}
                           {staffData.plans.map((p) => (
@@ -2158,14 +2194,19 @@ export function StaffWorkspace({
             {!memIsSelf && (
               <>
                 <div>
-                  <label className="block text-[12px] font-medium mb-1" style={{ color: 'var(--ink-secondary)' }}>
+                  <label
+                    htmlFor="member-plan-select"
+                    className="block text-[12px] font-medium mb-1"
+                    style={{ color: 'var(--ink-secondary)' }}
+                  >
                     Piano busta assegnato
                   </label>
                   <select
+                    id="member-plan-select"
                     value={memPlanId}
                     onChange={(e) => setMemPlanId(e.target.value)}
                     disabled={memUseCustomTiers}
-                    className="apple-input w-full rounded-[10px] px-3 py-2 text-[16px] md:text-[14px] cursor-pointer disabled:opacity-50"
+                    className="apple-input apple-select w-full rounded-[10px] pl-3 pr-8 py-2 text-[16px] md:text-[14px] cursor-pointer disabled:opacity-50"
                   >
                     {staffData.plans.map((p) => (
                       <option key={p.id} value={p.id}>

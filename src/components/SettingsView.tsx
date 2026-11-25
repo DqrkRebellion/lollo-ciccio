@@ -306,7 +306,7 @@ export function SettingsView({
         {/* Settings Sidebar (Apple macOS System Settings style) */}
         <nav
           aria-label="Categorie impostazioni"
-          className="md:w-[220px] shrink-0 flex md:flex-col gap-1 overflow-x-auto pb-1 md:pb-0"
+          className="md:w-[220px] shrink-0 flex md:flex-col gap-1.5 md:gap-1 overflow-x-auto no-scrollbar pb-1 md:pb-0"
         >
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -315,10 +315,15 @@ export function SettingsView({
               <button
                 key={item.id}
                 type="button"
+                aria-current={active ? 'page' : undefined}
                 onClick={() => setSection(item.id)}
-                className="inline-flex md:flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-[14px] font-medium whitespace-nowrap apple-press cursor-pointer transition-colors"
+                className={`inline-flex md:flex items-center gap-2 rounded-[10px] px-3 py-2 text-[13.5px] md:text-[14px] font-medium whitespace-nowrap shrink-0 apple-press cursor-pointer transition-colors ${
+                  active
+                    ? ''
+                    : 'bg-[var(--bg-surface)] md:bg-transparent shadow-[var(--shadow-card)] md:shadow-none hover:bg-[var(--bg-hover)]'
+                }`}
                 style={{
-                  backgroundColor: active ? 'var(--accent)' : 'transparent',
+                  backgroundColor: active ? 'var(--accent)' : undefined,
                   color: active ? '#FFFFFF' : 'var(--ink-primary)',
                 }}
               >
@@ -356,8 +361,8 @@ export function SettingsView({
                     />
                   </div>
 
-                  <div className="flex items-center justify-between gap-4 px-5 py-3.5">
-                    <div>
+                  <div className="flex items-center justify-between gap-3 sm:gap-4 px-4 sm:px-5 py-3.5">
+                    <div className="min-w-0">
                       <div className="text-[14px] font-medium">Provvigione per prevendita</div>
                       <div className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
                         Importo maturato in busta per ogni prevendita venduta
@@ -371,18 +376,18 @@ export function SettingsView({
                         toast.success('Provvigione prevendita aggiornata');
                       }}
                       ariaLabel="Provvigione per prevendita"
-                      className="w-24"
+                      className="w-24 shrink-0"
                     />
                   </div>
 
-                  <div className="flex items-center justify-between gap-4 px-5 py-3.5">
-                    <div>
+                  <div className="flex items-center justify-between gap-3 sm:gap-4 px-4 sm:px-5 py-3.5">
+                    <div className="min-w-0">
                       <div className="text-[14px] font-medium">Percentuale tavoli · No ospite</div>
                       <div className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
                         Default storico del foglio: 10% sul credito tavoli
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <NumericCellInput
                         value={Math.round(settings.table_rate_no_guest * 10000) / 100}
                         onCommit={(v) => {
@@ -398,14 +403,14 @@ export function SettingsView({
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-4 px-5 py-3.5">
-                    <div>
+                  <div className="flex items-center justify-between gap-3 sm:gap-4 px-4 sm:px-5 py-3.5">
+                    <div className="min-w-0">
                       <div className="text-[14px] font-medium">Percentuale tavoli · Ospite</div>
                       <div className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
                         Default storico del foglio: 8% sul credito tavoli
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <NumericCellInput
                         value={Math.round(settings.table_rate_guest * 10000) / 100}
                         onCommit={(v) => {
@@ -421,8 +426,8 @@ export function SettingsView({
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-4 px-5 py-3.5">
-                    <div>
+                  <div className="flex items-center justify-between gap-3 sm:gap-4 px-4 sm:px-5 py-3.5">
+                    <div className="min-w-0">
                       <div className="text-[14px] font-medium">Costo lista PR predefinito</div>
                       <div className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
                         Precompilato nelle nuove serate (€ per ingresso lista)
@@ -433,12 +438,12 @@ export function SettingsView({
                       prefix="€"
                       onCommit={(v) => onUpdateSettings({ default_lista_cost: v })}
                       ariaLabel="Costo lista predefinito"
-                      className="w-24"
+                      className="w-24 shrink-0"
                     />
                   </div>
 
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-3.5">
-                    <div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-5 py-3.5">
+                    <div className="min-w-0">
                       <div className="text-[14px] font-medium">Ripartizione bonus tra i PR</div>
                       <div className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
                         Nel foglio originale il bonus viene diviso in proporzione al fatturato
@@ -447,6 +452,7 @@ export function SettingsView({
                     <SegmentedControl<BonusSplitMode>
                       ariaLabel="Ripartizione bonus"
                       size="sm"
+                      className="w-full sm:w-auto shrink-0"
                       value={settings.bonus_split_mode}
                       onChange={(m) => {
                         onUpdateSettings({ bonus_split_mode: m });
@@ -555,10 +561,10 @@ export function SettingsView({
           {section === 'venues' && (
             <div className="apple-surface rounded-[16px] overflow-hidden">
               <div
-                className="flex items-center justify-between px-5 py-3.5"
+                className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-3.5"
                 style={{ borderBottom: '0.5px solid var(--separator)' }}
               >
-                <div>
+                <div className="min-w-0">
                   <h2 className="text-[15px] font-semibold">Locali gestiti ({venues.length})</h2>
                   <p className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
                     Ogni locale può avere modalità e prezzo tavolo predefiniti
@@ -577,7 +583,7 @@ export function SettingsView({
                     });
                     setVenueModalOpen(true);
                   }}
-                  className="inline-flex items-center gap-1 rounded-[9px] px-3 py-1.5 text-[13px] font-semibold text-white apple-press cursor-pointer"
+                  className="inline-flex items-center gap-1 rounded-[9px] px-3 py-1.5 text-[13px] font-semibold whitespace-nowrap text-white apple-press cursor-pointer shrink-0"
                   style={{ backgroundColor: 'var(--accent)' }}
                 >
                   <Plus className="h-3.5 w-3.5" aria-hidden="true" />
@@ -638,10 +644,10 @@ export function SettingsView({
           {section === 'team' && (
             <div className="apple-surface rounded-[16px] overflow-hidden">
               <div
-                className="flex items-center justify-between px-5 py-3.5"
+                className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-3.5"
                 style={{ borderBottom: '0.5px solid var(--separator)' }}
               >
-                <div>
+                <div className="min-w-0">
                   <h2 className="text-[15px] font-semibold">Promoter &amp; Team</h2>
                   <p className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
                     I PR attivi vengono precompilati automaticamente nelle nuove serate
@@ -661,7 +667,7 @@ export function SettingsView({
                     });
                     setPrModalOpen(true);
                   }}
-                  className="inline-flex items-center gap-1 rounded-[9px] px-3 py-1.5 text-[13px] font-semibold text-white apple-press cursor-pointer"
+                  className="inline-flex items-center gap-1 rounded-[9px] px-3 py-1.5 text-[13px] font-semibold whitespace-nowrap text-white apple-press cursor-pointer shrink-0"
                   style={{ backgroundColor: 'var(--accent)' }}
                 >
                   <Plus className="h-3.5 w-3.5" aria-hidden="true" />
@@ -723,8 +729,8 @@ export function SettingsView({
           {section === 'preferences' && (
             <div className="apple-surface rounded-[16px] overflow-hidden">
               <div className="apple-list">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4">
-                  <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-5 py-4">
+                  <div className="min-w-0">
                     <div className="text-[14px] font-medium">Aspetto interfaccia</div>
                     <div className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
                       La modalità scura è ideale di notte all’ingresso del locale
@@ -733,6 +739,7 @@ export function SettingsView({
                   <SegmentedControl<ThemePreference>
                     ariaLabel="Tema interfaccia"
                     size="sm"
+                    className="w-full sm:w-auto shrink-0"
                     value={themePreference}
                     onChange={onChangeTheme}
                     options={[
@@ -743,8 +750,8 @@ export function SettingsView({
                   />
                 </div>
 
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4">
-                  <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-5 py-4">
+                  <div className="min-w-0">
                     <div className="text-[14px] font-medium">Modalità inserimento prevendite</div>
                     <div className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
                       Scegli tra inserimento per singolo PR o Totale − Lollo (attiva su tutte le serate)
@@ -753,6 +760,7 @@ export function SettingsView({
                   <SegmentedControl<PresaleInputMode>
                     ariaLabel="Modalità inserimento prevendite"
                     size="sm"
+                    className="w-full sm:w-auto shrink-0"
                     value={settings.default_presale_input_mode}
                     onChange={(m) => {
                       onUpdateSettings({ default_presale_input_mode: m });
@@ -769,8 +777,8 @@ export function SettingsView({
                   />
                 </div>
 
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4">
-                  <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-5 py-4">
+                  <div className="min-w-0">
                     <div className="text-[14px] font-medium">Scarico predefinito nuovi tavoli</div>
                     <div className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
                       Stato assegnato automaticamente quando aggiungi un tavolo
@@ -779,6 +787,7 @@ export function SettingsView({
                   <SegmentedControl<ScaricoStatus>
                     ariaLabel="Scarico predefinito nuovi tavoli"
                     size="sm"
+                    className="w-full sm:w-auto shrink-0"
                     value={settings.default_table_scarico}
                     onChange={(s) => onUpdateSettings({ default_table_scarico: s })}
                     options={[
@@ -789,8 +798,8 @@ export function SettingsView({
                   />
                 </div>
 
-                <div className="flex items-center justify-between gap-4 px-5 py-4">
-                  <div>
+                <div className="flex items-center justify-between gap-4 px-4 sm:px-5 py-4">
+                  <div className="min-w-0">
                     <div className="text-[14px] font-medium">Mostra sempre colonne sovraprezzo</div>
                     <div className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
                       Mostra N paganti 2 e Sovraprezzo nella tabella tavoli di default
@@ -803,8 +812,8 @@ export function SettingsView({
                   />
                 </div>
 
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4">
-                  <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-5 py-4">
+                  <div className="min-w-0">
                     <div className="text-[14px] font-medium">Prezzi rapidi tavoli (€)</div>
                     <div className="text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
                       Pulsanti rapidi nel modulo Nuovo tavolo (separati da virgola)
@@ -977,11 +986,13 @@ export function SettingsView({
                               aria-hidden="true"
                             />
                             <div className="min-w-0">
-                              <div className="text-[13px] font-semibold truncate">
-                                {pk.device_name}
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-[13px] font-semibold truncate">
+                                  {pk.device_name}
+                                </span>
                                 {isThisDevice && (
                                   <span
-                                    className="ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0 whitespace-nowrap"
                                     style={{
                                       backgroundColor: 'var(--status-green-bg)',
                                       color: 'var(--status-green)',

@@ -180,6 +180,7 @@ export function AppShell({
                 <button
                   key={item.id}
                   type="button"
+                  aria-current={active ? 'page' : undefined}
                   onClick={() => onSelectTab(item.id)}
                   className="w-full flex items-center justify-between gap-2.5 rounded-[10px] px-3 py-2 text-[14px] font-medium apple-press cursor-pointer transition-colors"
                   style={{
@@ -187,9 +188,9 @@ export function AppShell({
                     color: active ? 'var(--accent)' : 'var(--ink-primary)',
                   }}
                 >
-                  <span className="flex items-center gap-2.5">
-                    <Icon className="h-[17px] w-[17px]" aria-hidden="true" />
-                    {item.label}
+                  <span className="flex items-center gap-2.5 min-w-0">
+                    <Icon className="h-[17px] w-[17px] shrink-0" aria-hidden="true" />
+                    <span className="truncate">{item.label}</span>
                   </span>
                   {item.badge !== undefined && (
                     <span
@@ -307,21 +308,22 @@ export function AppShell({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              disabled={!canUndo}
-              onClick={() => onUndo()}
-              aria-label={lastUndoLabel ? `Annulla: ${lastUndoLabel}` : 'Annulla ultima modifica'}
-              title={lastUndoLabel ? `Annulla: ${lastUndoLabel}` : 'Annulla'}
-              className="relative flex h-8 items-center justify-center gap-1 rounded-full px-2.5 text-[12px] font-semibold apple-press cursor-pointer disabled:opacity-30"
-              style={{
-                backgroundColor: canUndo ? 'var(--accent-subtle)' : 'var(--bg-surface-secondary)',
-                color: canUndo ? 'var(--accent)' : 'var(--ink-secondary)',
-              }}
-            >
-              <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />
-              {canUndo && <span className="tabular-nums">{undoCount}</span>}
-            </button>
+            {canUndo && (
+              <button
+                type="button"
+                onClick={() => onUndo()}
+                aria-label={lastUndoLabel ? `Annulla: ${lastUndoLabel}` : 'Annulla ultima modifica'}
+                title={lastUndoLabel ? `Annulla: ${lastUndoLabel}` : 'Annulla'}
+                className="relative flex h-8 items-center justify-center gap-1 rounded-full px-2.5 text-[12px] font-semibold apple-press cursor-pointer"
+                style={{
+                  backgroundColor: 'var(--accent-subtle)',
+                  color: 'var(--accent)',
+                }}
+              >
+                <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />
+                <span className="tabular-nums">{undoCount}</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={onOpenSearch}
@@ -391,8 +393,9 @@ export function AppShell({
               <button
                 key={item.id}
                 type="button"
+                aria-current={active ? 'page' : undefined}
                 onClick={() => onSelectTab(item.id)}
-                className="relative flex flex-col items-center justify-center gap-0.5 apple-press cursor-pointer"
+                className="relative min-w-0 flex flex-col items-center justify-center gap-0.5 px-0.5 apple-press cursor-pointer"
                 style={{
                   color: active ? 'var(--accent)' : 'var(--ink-secondary)',
                 }}
@@ -408,7 +411,9 @@ export function AppShell({
                     </span>
                   )}
                 </div>
-                <span className="text-[10px] font-medium">{item.shortLabel}</span>
+                <span className="text-[10px] font-medium truncate max-w-full">
+                  {item.shortLabel}
+                </span>
               </button>
             );
           })}

@@ -17,6 +17,8 @@ export const APPLE_SPRING_SNAPPY = {
 
 /**
  * Apple Segmented Control with fluid sliding pill (layoutId spring).
+ * Uses flex-[1_0_auto] so segments never crush text below their label width,
+ * while still distributing extra space cleanly when full-width.
  */
 export function SegmentedControl<T extends string>({
   options,
@@ -34,24 +36,46 @@ export function SegmentedControl<T extends string>({
   className?: string;
 }) {
   const groupId = useId();
+  const hasSelection = options.some((o) => o.value === value);
+
+  const handleKeyDown = (e: React.KeyboardEvent, idx: number) => {
+    let nextIdx: number | null = null;
+    if (e.key === 'ArrowRight') nextIdx = (idx + 1) % options.length;
+    else if (e.key === 'ArrowLeft') nextIdx = (idx - 1 + options.length) % options.length;
+    else if (e.key === 'Home') nextIdx = 0;
+    else if (e.key === 'End') nextIdx = options.length - 1;
+    if (nextIdx === null) return;
+    e.preventDefault();
+    const nextOpt = options[nextIdx];
+    if (nextOpt) {
+      onChange(nextOpt.value);
+      document.getElementById(`${groupId}-opt-${nextIdx}`)?.focus();
+    }
+  };
+
   return (
     <div
       role="radiogroup"
       aria-label={ariaLabel}
-      className={`inline-flex max-w-full items-center rounded-[10px] p-[3px] select-none overflow-x-auto ${className}`}
-      style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
+      className={`inline-flex max-w-full align-middle items-center gap-[2px] rounded-[11px] p-[3px] select-none overflow-x-auto no-scrollbar ${className}`}
+      style={{ backgroundColor: 'var(--seg-track)' }}
     >
-      {options.map((opt) => {
+      {options.map((opt, idx) => {
         const active = opt.value === value;
         return (
           <button
             key={opt.value}
+            id={`${groupId}-opt-${idx}`}
             type="button"
             role="radio"
             aria-checked={active}
+            tabIndex={active || (!hasSelection && idx === 0) ? 0 : -1}
             onClick={() => onChange(opt.value)}
-            className={`relative flex-1 min-w-0 rounded-[7px] font-medium transition-colors apple-press cursor-pointer whitespace-nowrap ${
-              size === 'sm' ? 'px-2 sm:px-2.5 py-1 text-[12px]' : 'px-2.5 sm:px-3.5 py-1.5 text-[12.5px] sm:text-[13px]'
+            onKeyDown={(e) => handleKeyDown(e, idx)}
+            className={`relative flex-[1_0_auto] inline-flex items-center justify-center text-center rounded-[8px] font-medium transition-colors apple-press cursor-pointer whitespace-nowrap leading-tight overflow-hidden focus-visible:outline-offset-[-1px] ${
+              size === 'sm'
+                ? 'px-2.5 sm:px-3 py-1.5 text-[12px] sm:text-[12.5px] min-h-[30px]'
+                : 'px-3 sm:px-3.5 py-2 text-[13px] min-h-[36px]'
             }`}
             style={{
               color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
@@ -61,10 +85,10 @@ export function SegmentedControl<T extends string>({
               <motion.span
                 layoutId={`seg-${groupId}`}
                 transition={APPLE_SPRING_SNAPPY}
-                className="absolute inset-0 rounded-[7px]"
+                className="absolute inset-0 rounded-[8px]"
                 style={{
-                  backgroundColor: 'var(--bg-surface)',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.09), 0 0 0 0.5px rgba(0,0,0,0.05)',
+                  backgroundColor: 'var(--seg-thumb)',
+                  boxShadow: 'var(--seg-thumb-shadow)',
                 }}
               />
             )}
@@ -375,9 +399,9 @@ export function AppleModal({
               style={{ borderBottom: '0.5px solid var(--separator)' }}
             >
               <div className="min-w-0">
-                <h2 className="text-[18px] font-semibold tracking-tight">{title}</h2>
+                <h2 className="text-[18px] font-semibold tracking-tight break-words">{title}</h2>
                 {subtitle && (
-                  <p className="mt-0.5 text-[13px]" style={{ color: 'var(--ink-secondary)' }}>
+                  <p className="mt-0.5 text-[13px] break-words" style={{ color: 'var(--ink-secondary)' }}>
                     {subtitle}
                   </p>
                 )}
@@ -386,7 +410,7 @@ export function AppleModal({
                 type="button"
                 onClick={onClose}
                 aria-label="Chiudi"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full apple-press cursor-pointer"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full apple-press cursor-pointer"
                 style={{
                   backgroundColor: 'var(--bg-surface-secondary)',
                   color: 'var(--ink-secondary)',

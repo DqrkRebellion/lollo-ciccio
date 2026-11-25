@@ -510,23 +510,26 @@ export function StaffEventDetail({
 
       {/* Hero Staff Financial Strip (4 clean KPIs) */}
       <section className="apple-surface rounded-[18px] overflow-hidden mb-5">
-        <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 divide-x divide-[var(--separator)]">
-          <div className="p-3.5 sm:p-4 min-w-0">
+        <div
+          className="grid grid-cols-2 lg:grid-cols-4 gap-px"
+          style={{ backgroundColor: 'var(--separator)' }}
+        >
+          <div className="p-3.5 sm:p-4 min-w-0" style={{ backgroundColor: 'var(--bg-surface)' }}>
             <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Ingressi {staffGroup.name}
             </span>
-            <div className="mt-1 text-[20px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none">
+            <div className="mt-1 text-[20px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none truncate">
               {formatInt(staffSummary.pxTotal)}
               <span className="ml-1 text-[13px] font-medium" style={{ color: 'var(--ink-tertiary)' }}>
                 px
               </span>
             </div>
-            <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+            <div className="mt-1.5 text-[12px] tabular-nums truncate" style={{ color: 'var(--ink-secondary)' }}>
               {formatInt(staffSummary.pxPresales)} preve · {formatInt(staffSummary.pxTables)} tavoli
             </div>
           </div>
 
-          <div className="p-3.5 sm:p-4 min-w-0">
+          <div className="p-3.5 sm:p-4 min-w-0" style={{ backgroundColor: 'var(--bg-surface)' }}>
             <div className="flex items-center justify-between gap-1.5">
               <span className="text-[12px] font-medium truncate" style={{ color: 'var(--ink-secondary)' }}>
                 Mancanti
@@ -535,7 +538,7 @@ export function StaffEventDetail({
                 <button
                   type="button"
                   onClick={handleSettleAllStaff}
-                  className="text-[11px] font-semibold cursor-pointer apple-press shrink-0"
+                  className="text-[11px] font-semibold cursor-pointer apple-press whitespace-nowrap shrink-0"
                   style={{ color: 'var(--accent)' }}
                 >
                   Salda tutto
@@ -546,20 +549,20 @@ export function StaffEventDetail({
               <MancantiBadge value={staffSummary.totalMancanti} />
             </div>
             {staffSummary.totalScarico > 0.01 && (
-              <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+              <div className="mt-1.5 text-[12px] tabular-nums truncate" style={{ color: 'var(--ink-secondary)' }}>
                 {formatEur(staffSummary.totalPaidCash)} / {formatEur(staffSummary.totalScarico)}
               </div>
             )}
           </div>
 
-          <div className="p-3.5 sm:p-4 min-w-0">
+          <div className="p-3.5 sm:p-4 min-w-0" style={{ backgroundColor: 'var(--bg-surface)' }}>
             <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               {eventIsActive ? 'Buste staff (provv.)' : 'Buste staff'}
             </span>
             <div className="mt-1 text-[20px] sm:text-[26px] font-bold tracking-tight tabular-nums leading-none truncate">
               {formatEur(staffSummary.totalBusta, true)}
             </div>
-            <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+            <div className="mt-1.5 text-[12px] tabular-nums truncate" style={{ color: 'var(--ink-secondary)' }}>
               {staffSummary.totalBustaUnpaid > 0.01 ? (
                 <>
                   Da pagare{' '}
@@ -573,7 +576,7 @@ export function StaffEventDetail({
             </div>
           </div>
 
-          <div className="p-3.5 sm:p-4 min-w-0">
+          <div className="p-3.5 sm:p-4 min-w-0" style={{ backgroundColor: 'var(--bg-surface)' }}>
             <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Tuo margine netto
             </span>
@@ -708,9 +711,8 @@ export function StaffEventDetail({
                           aria-label={`Piano busta ${r.displayName}`}
                           value={r.member.plan_id || ''}
                           onChange={(e) => onAssignMemberPlan(r.member!, e.target.value || null)}
-                          className="rounded-full px-2.5 py-0.5 text-[16px] md:text-[11px] font-semibold cursor-pointer max-w-full"
+                          className="apple-input apple-select rounded-[8px] pl-2.5 pr-7 py-1 text-[16px] md:text-[12px] font-medium cursor-pointer max-w-full"
                           style={{
-                            backgroundColor: 'var(--bg-surface-secondary)',
                             color: 'var(--ink-secondary)',
                           }}
                         >
@@ -742,8 +744,8 @@ export function StaffEventDetail({
                         <span
                           className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold"
                           style={{
-                            backgroundColor: 'rgba(88, 86, 214, 0.14)',
-                            color: '#5856D6',
+                            backgroundColor: 'var(--status-indigo-bg)',
+                            color: 'var(--status-indigo)',
                           }}
                         >
                           <Layers className="h-3 w-3" aria-hidden="true" />
@@ -1114,7 +1116,7 @@ export function StaffEventDetail({
                           type="button"
                           onClick={() => onDeletePresale(cp.row.id)}
                           aria-label="Elimina"
-                          className="p-1.5 rounded-[8px] opacity-40 group-hover:opacity-100 hover:bg-[var(--status-red-bg)] transition-opacity cursor-pointer"
+                          className="p-1.5 rounded-[8px] opacity-40 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-[var(--status-red-bg)] transition-opacity cursor-pointer"
                           style={{ color: 'var(--status-red)' }}
                         >
                           <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -1191,8 +1193,8 @@ export function StaffEventDetail({
                             <span
                               className="rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums"
                               style={{
-                                backgroundColor: 'rgba(88, 86, 214, 0.14)',
-                                color: '#5856D6',
+                                backgroundColor: 'var(--status-indigo-bg)',
+                                color: 'var(--status-indigo)',
                               }}
                             >
                               Somma {ct.combinedMemberTablesCount} tav. ({formatEur(ct.combinedMemberCredit)}) →{' '}
@@ -1582,7 +1584,7 @@ export function StaffEventDetail({
                         <td className="py-2 pl-2 pr-4 text-right tabular-nums whitespace-nowrap">
                           <div className="font-bold">{formatEur(ct.bustaFinal, true)}</div>
                           {combinedBonus && ct.rateApplied > 0 && (
-                            <div className="text-[10px] font-semibold" style={{ color: '#5856D6' }}>
+                            <div className="text-[10px] font-semibold" style={{ color: 'var(--status-indigo)' }}>
                               Σ {ct.combinedMemberTablesCount} tav. ({formatPercent(ct.rateApplied)})
                             </div>
                           )}
@@ -1603,7 +1605,7 @@ export function StaffEventDetail({
                             type="button"
                             onClick={() => onDeleteTable(ct.row.id)}
                             aria-label="Elimina tavolo"
-                            className="p-1.5 rounded-[8px] opacity-40 group-hover:opacity-100 hover:bg-[var(--status-red-bg)] transition-opacity cursor-pointer"
+                            className="p-1.5 rounded-[8px] opacity-40 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-[var(--status-red-bg)] transition-opacity cursor-pointer"
                             style={{ color: 'var(--status-red)' }}
                           >
                             <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />

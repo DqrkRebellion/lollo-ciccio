@@ -30,6 +30,12 @@
   --status-red-bg: rgba(255, 59, 48, 0.13);
   --status-orange: #c96a00;
   --status-orange-bg: rgba(255, 149, 0, 0.14);
+  --status-indigo: #5856d6;
+  --status-indigo-bg: rgba(88, 86, 214, 0.13);
+
+  --seg-track: rgba(118, 118, 128, 0.12);
+  --seg-thumb: #ffffff;
+  --seg-thumb-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
 
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
   --shadow-floating: 0 12px 40px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
@@ -64,6 +70,12 @@
   --status-red-bg: rgba(255, 69, 58, 0.16);
   --status-orange: #ff9f0a;
   --status-orange-bg: rgba(255, 159, 10, 0.18);
+  --status-indigo: #8e8cff;
+  --status-indigo-bg: rgba(142, 140, 255, 0.18);
+
+  --seg-track: rgba(118, 118, 128, 0.24);
+  --seg-thumb: #3a3a3c;
+  --seg-thumb-shadow: 0 2px 6px rgba(0, 0, 0, 0.36), inset 0 0.5px 0 rgba(255, 255, 255, 0.1), 0 0 0 0.5px rgba(255, 255, 255, 0.06);
 
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.36), 0 0 0 0.5px rgba(255, 255, 255, 0.08);
   --shadow-floating: 0 20px 56px rgba(0, 0, 0, 0.6), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
@@ -199,6 +211,35 @@
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-subtle);
   outline: none;
+}
+
+/* Native select with crisp Apple chevron & safe right padding so labels never collide */
+.apple-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236e6e73' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  background-size: 14px 14px;
+  padding-right: 2rem;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.dark .apple-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2398989d' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* Hide scrollbars cleanly on horizontal chip bars / segmented tracks */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 /* Hide number input spinners for cleaner tabular-nums UX */

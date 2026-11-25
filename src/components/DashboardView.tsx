@@ -604,7 +604,7 @@ export function DashboardView({
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="w-full sm:w-auto flex flex-wrap items-center justify-between sm:justify-end gap-2">
             <SegmentedControl<PromoterScope>
               ariaLabel="Filtra per promoter"
               size="sm"
@@ -620,7 +620,7 @@ export function DashboardView({
             <button
               type="button"
               onClick={() => setFilterSheetOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-[10px] px-3.5 py-1.5 text-[13px] font-semibold apple-surface apple-press cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-[11px] px-3.5 py-1.5 min-h-[36px] text-[13px] font-semibold whitespace-nowrap apple-surface apple-press cursor-pointer"
               style={{
                 color: activeAdvancedCount > 0 ? 'var(--accent)' : 'var(--ink-primary)',
               }}
@@ -696,35 +696,38 @@ export function DashboardView({
 
       {/* Unified Overview Strip */}
       <section className="apple-surface rounded-[18px] overflow-hidden">
-        <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 divide-x divide-[var(--separator)]">
-          <div className="p-3.5 sm:p-5 min-w-0">
+        <div
+          className="grid grid-cols-2 lg:grid-cols-4 gap-px"
+          style={{ backgroundColor: 'var(--separator)' }}
+        >
+          <div className="p-3.5 sm:p-5 min-w-0" style={{ backgroundColor: 'var(--bg-surface)' }}>
             <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Fatturato
             </span>
             <div className="mt-1 text-[20px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none truncate">
               {formatEur(stats.revTotal)}
             </div>
-            <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+            <div className="mt-1.5 text-[12px] tabular-nums truncate" style={{ color: 'var(--ink-secondary)' }}>
               Media {formatEur(stats.avgRev)}
             </div>
           </div>
 
-          <div className="p-3.5 sm:p-5 min-w-0">
+          <div className="p-3.5 sm:p-5 min-w-0" style={{ backgroundColor: 'var(--bg-surface)' }}>
             <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Ingressi
             </span>
-            <div className="mt-1 text-[20px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none">
+            <div className="mt-1 text-[20px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none truncate">
               {formatInt(stats.pxTotal)}
               <span className="ml-1 text-[13px] font-medium" style={{ color: 'var(--ink-tertiary)' }}>
                 px
               </span>
             </div>
-            <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+            <div className="mt-1.5 text-[12px] tabular-nums truncate" style={{ color: 'var(--ink-secondary)' }}>
               Media {formatInt(stats.avgPx)} px
             </div>
           </div>
 
-          <div className="p-3.5 sm:p-5 min-w-0">
+          <div className="p-3.5 sm:p-5 min-w-0" style={{ backgroundColor: 'var(--bg-surface)' }}>
             <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Buste maturate
             </span>
@@ -734,21 +737,21 @@ export function DashboardView({
             >
               {formatEur(stats.bustaTotal)}
             </div>
-            <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+            <div className="mt-1.5 text-[12px] tabular-nums truncate" style={{ color: 'var(--ink-secondary)' }}>
               {stats.bonusTotal > 0
                 ? `Inclusi ${formatEur(stats.bonusTotal)} bonus`
                 : `Media ${formatEur(stats.avgBusta)}`}
             </div>
           </div>
 
-          <div className="p-3.5 sm:p-5 min-w-0">
+          <div className="p-3.5 sm:p-5 min-w-0" style={{ backgroundColor: 'var(--bg-surface)' }}>
             <span className="block truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Quota tavoli
             </span>
-            <div className="mt-1 text-[20px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none">
+            <div className="mt-1 text-[20px] sm:text-[28px] font-bold tracking-tight tabular-nums leading-none truncate">
               {formatPercent(stats.revTotal > 0 ? stats.revTables / stats.revTotal : 0)}
             </div>
-            <div className="mt-1.5 text-[12px] tabular-nums" style={{ color: 'var(--ink-secondary)' }}>
+            <div className="mt-1.5 text-[12px] tabular-nums truncate" style={{ color: 'var(--ink-secondary)' }}>
               Tavolo medio {formatEur(stats.avgTableValue)}
             </div>
           </div>
@@ -962,6 +965,12 @@ export function DashboardView({
               },
             ].map((row) => (
               <div key={row.label} className="space-y-1.5">
+                <div
+                  className="sm:hidden text-[11px] font-medium"
+                  style={{ color: 'var(--ink-secondary)' }}
+                >
+                  {row.label}
+                </div>
                 <div className="flex items-center justify-between gap-2 text-[12px] sm:text-[13px] tabular-nums">
                   <span className="font-semibold text-[#0071E3] dark:text-[#409CFF]">
                     {row.lVal}{' '}
@@ -1020,26 +1029,39 @@ export function DashboardView({
                     key={v.name}
                     type="button"
                     onClick={() => toggleVenue(v.name)}
-                    className="w-full px-5 py-3 text-left hover:bg-[var(--bg-hover)] transition-colors cursor-pointer space-y-1.5"
+                    className="w-full px-4 sm:px-5 py-3 text-left hover:bg-[var(--bg-hover)] transition-colors cursor-pointer space-y-1.5"
                     style={{
                       backgroundColor: isSelected ? 'var(--bg-active)' : undefined,
                     }}
                   >
-                    <div className="flex items-center justify-between gap-3 tabular-nums">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span
-                          className="h-2.5 w-2.5 rounded-full shrink-0"
-                          style={{ backgroundColor: v.color }}
-                        />
-                        <span className="text-[14px] font-semibold truncate">{v.name}</span>
-                        <span className="text-[12px] shrink-0" style={{ color: 'var(--ink-tertiary)' }}>
+                    <div className="flex items-start sm:items-center justify-between gap-3 tabular-nums">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className="h-2.5 w-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: v.color }}
+                          />
+                          <span className="text-[14px] font-semibold truncate">{v.name}</span>
+                          <span
+                            className="hidden sm:inline text-[12px] shrink-0"
+                            style={{ color: 'var(--ink-tertiary)' }}
+                          >
+                            {v.events} ser. · {formatInt(v.px)} px
+                          </span>
+                        </div>
+                        <div
+                          className="sm:hidden mt-0.5 pl-[18px] text-[11px] truncate"
+                          style={{ color: 'var(--ink-tertiary)' }}
+                        >
                           {v.events} ser. · {formatInt(v.px)} px
-                        </span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <span className="text-[14px] font-semibold">{formatEur(v.revenue)}</span>
+                      <div className="flex flex-col sm:flex-row items-end sm:items-center gap-0.5 sm:gap-3 shrink-0">
+                        <span className="text-[14px] font-semibold leading-tight">
+                          {formatEur(v.revenue)}
+                        </span>
                         <span
-                          className="text-[13px] font-semibold min-w-[68px] text-right"
+                          className="text-[12px] sm:text-[13px] font-semibold sm:min-w-[68px] text-right leading-tight"
                           style={{ color: 'var(--status-green)' }}
                         >
                           {formatEur(v.busta, true)}
@@ -1223,7 +1245,7 @@ export function DashboardView({
                     setPeriod('CUSTOM');
                     setDateFrom(e.target.value);
                   }}
-                  className="apple-input w-full rounded-[10px] px-3 py-2 text-[16px] md:text-[15px] tabular-nums"
+                  className="apple-input w-full min-h-[42px] rounded-[10px] px-3 py-2 text-[16px] md:text-[15px] tabular-nums"
                 />
               </div>
               <div>
@@ -1242,7 +1264,7 @@ export function DashboardView({
                     setPeriod('CUSTOM');
                     setDateTo(e.target.value);
                   }}
-                  className="apple-input w-full rounded-[10px] px-3 py-2 text-[16px] md:text-[15px] tabular-nums"
+                  className="apple-input w-full min-h-[42px] rounded-[10px] px-3 py-2 text-[16px] md:text-[15px] tabular-nums"
                 />
               </div>
             </div>
@@ -1310,7 +1332,7 @@ export function DashboardView({
                 className="w-full"
                 options={[
                   { value: 'ALL', label: 'Tutte' },
-                  { value: 'NO OSPITE', label: 'No osp.' },
+                  { value: 'NO OSPITE', label: 'No ospite' },
                   { value: 'OSPITE', label: 'Ospite' },
                 ]}
               />
@@ -1381,7 +1403,7 @@ export function DashboardView({
                 id="dash-min-rev"
                 value={minRevenue}
                 onChange={(e) => setMinRevenue(Number(e.target.value))}
-                className="apple-input w-full rounded-[10px] px-3 py-2 text-[16px] md:text-[14px]"
+                className="apple-input apple-select w-full rounded-[10px] pl-3 pr-8 py-2 text-[16px] md:text-[14px] cursor-pointer"
               >
                 <option value={0}>Qualsiasi importo</option>
                 <option value={1000}>Almeno 1.000 €</option>

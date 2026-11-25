@@ -122,6 +122,7 @@ export function SpotlightSearch({
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                aria-label="Cerca serata, locale o nome tavolo"
                 placeholder="Cerca serata, locale o nome tavolo…"
                 className="flex-1 bg-transparent text-[16px] outline-none placeholder:text-[var(--ink-tertiary)]"
               />
@@ -185,16 +186,10 @@ export function SpotlightSearch({
                           aria-hidden="true"
                         />
                         <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[14px] font-semibold truncate">{ev.title}</span>
-                            <span
-                              className="text-[12px] font-medium shrink-0"
-                              style={{ color: 'var(--ink-secondary)' }}
-                            >
-                              {ev.venue_name}
-                            </span>
-                          </div>
-                          <div className="text-[12px]" style={{ color: 'var(--ink-tertiary)' }}>
+                          <div className="text-[14px] font-semibold truncate">{ev.title}</div>
+                          <div className="text-[12px] truncate" style={{ color: 'var(--ink-tertiary)' }}>
+                            <span style={{ color: 'var(--ink-secondary)' }}>{ev.venue_name}</span>
+                            {' · '}
                             {formatDateShort(ev.event_date)}
                             {matchingTable ? ` · Tavolo “${matchingTable.table_name}”` : ''}
                           </div>

@@ -236,8 +236,10 @@ export function LockScreen({
 
         {/* Account Switcher */}
         <div
+          role="radiogroup"
+          aria-label="Seleziona profilo"
           className="mt-5 grid w-full grid-cols-2 gap-1.5 rounded-[14px] p-1.5"
-          style={{ backgroundColor: 'var(--bg-surface-secondary)' }}
+          style={{ backgroundColor: 'var(--seg-track)' }}
         >
           {TEAM_ACCOUNTS.map((acc) => {
             const active = acc.promoterId === selectedId;
@@ -245,6 +247,8 @@ export function LockScreen({
               <button
                 key={acc.promoterId}
                 type="button"
+                role="radio"
+                aria-checked={active}
                 onClick={() => {
                   setSelectedId(acc.promoterId);
                   setPin('');
@@ -262,8 +266,8 @@ export function LockScreen({
                     transition={APPLE_SPRING_SNAPPY}
                     className="absolute inset-0 rounded-[10px]"
                     style={{
-                      backgroundColor: 'var(--bg-surface)',
-                      boxShadow: '0 2px 6px rgba(0,0,0,0.08), 0 0 0 0.5px rgba(0,0,0,0.05)',
+                      backgroundColor: 'var(--seg-thumb)',
+                      boxShadow: 'var(--seg-thumb-shadow)',
                     }}
                   />
                 )}

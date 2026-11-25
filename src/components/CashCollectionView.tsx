@@ -472,7 +472,7 @@ export function CashCollectionView({
             aria-label="Seleziona serata per la raccolta soldi"
             value={activeEvent.id}
             onChange={(e) => onSelectEvent(e.target.value)}
-            className="apple-input flex-1 w-full max-w-full min-w-0 overflow-hidden text-ellipsis rounded-[10px] px-3 py-2 text-[16px] md:text-[14px] font-semibold cursor-pointer"
+            className="apple-input apple-select flex-1 w-full max-w-full min-w-0 rounded-[10px] pl-3 pr-8 py-2 text-[16px] md:text-[14px] font-semibold cursor-pointer"
           >
             {activeEventsList.length > 0 && (
               <optgroup label="Serate attive">
@@ -625,8 +625,9 @@ export function CashCollectionView({
                   <button
                     key={f.id}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => setPrFilter(f.id)}
-                    className="rounded-[9px] px-3 py-1.5 text-[12px] font-semibold apple-press cursor-pointer transition-colors"
+                    className="inline-flex items-center rounded-[9px] px-3 py-1.5 min-h-[34px] text-[12.5px] font-semibold whitespace-nowrap apple-press cursor-pointer transition-colors"
                     style={{
                       backgroundColor: active
                         ? f.id === 'OWING' && prCards.owing.length > 0
@@ -857,6 +858,7 @@ export function CashCollectionView({
               <SegmentedControl<HistoryScope>
                 ariaLabel="Ambito cronologia"
                 size="sm"
+                className="w-full sm:w-auto"
                 value={historyScope}
                 onChange={setHistoryScope}
                 options={[
@@ -865,7 +867,7 @@ export function CashCollectionView({
                 ]}
               />
 
-              <div className="flex flex-wrap items-center gap-1">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {(['ALL', 'cash', 'transfer', 'card'] as const).map((m) => {
                   const active = historyMethod === m;
                   const lbl =
@@ -880,8 +882,9 @@ export function CashCollectionView({
                     <button
                       key={m}
                       type="button"
+                      aria-pressed={active}
                       onClick={() => setHistoryMethod(m)}
-                      className="rounded-[8px] px-2.5 py-1 text-[12px] font-medium apple-press cursor-pointer transition-colors"
+                      className="inline-flex items-center rounded-[8px] px-2.5 py-1.5 min-h-[32px] text-[12px] font-medium whitespace-nowrap apple-press cursor-pointer transition-colors"
                       style={{
                         backgroundColor: active
                           ? 'var(--accent-subtle)'
@@ -908,8 +911,19 @@ export function CashCollectionView({
                 onChange={(e) => setHistorySearch(e.target.value)}
                 placeholder="Cerca PR o nota…"
                 aria-label="Filtra cronologia incassi"
-                className="apple-input w-full rounded-[10px] pl-9 pr-3 py-1.5 text-[16px] md:text-[13px]"
+                className="apple-input w-full rounded-[10px] pl-9 pr-8 py-1.5 text-[16px] md:text-[13px]"
               />
+              {historySearch && (
+                <button
+                  type="button"
+                  onClick={() => setHistorySearch('')}
+                  aria-label="Svuota ricerca cronologia"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 cursor-pointer"
+                  style={{ color: 'var(--ink-tertiary)' }}
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -1179,7 +1193,7 @@ export function CashCollectionView({
                     key={amt}
                     type="button"
                     onClick={() => handleQuickAddChip(amt)}
-                    className="rounded-[10px] px-1 py-2.5 min-h-[42px] text-[12px] sm:text-[13px] font-bold tabular-nums apple-press cursor-pointer transition-colors"
+                    className="rounded-[10px] px-1 py-2.5 min-h-[42px] text-[12px] sm:text-[13px] font-bold tabular-nums whitespace-nowrap apple-press cursor-pointer transition-colors"
                     style={{
                       backgroundColor: 'var(--bg-surface-secondary)',
                       color: 'var(--ink-primary)',
